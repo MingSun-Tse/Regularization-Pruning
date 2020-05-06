@@ -22,6 +22,7 @@ import torchvision.models as models
 from pruner import l1_pruner
 from pruner import increg_pruner
 import logger as logger_
+from utils import get_n_params, get_n_flops
 # ---
 
 model_names = sorted(name for name in models.__dict__
@@ -279,6 +280,9 @@ def main_worker(gpu, ngpus_per_node, args):
     # Structured pruning is basically equivalent to providing a new weight initialization before finetuning,
     # so just before training, do pruning to obtain a new model.
     if args.method:
+        n_params_original = get_n_params(model)
+        n_flops_original = get_n_flops(model, input_res=224)
+
         class runner: pass
         runner.test = validate
         runner.test_loader = val_loader
@@ -291,6 +295,14 @@ def main_worker(gpu, ngpus_per_node, args):
             Pruner = increg_pruner.IncRegPruner
         pruner = Pruner(model, args, logger, runner)
         model = pruner.prune()
+
+        n_params_now = get_n_params(model)
+        n_flops_now = get_n_flops(model, input_res=224)
+        print("n_params_original: %.4fM, n_flops_original: %.4fG" % (n_params_original, n_flops_original))
+        print("n_params_now:      %.4fM, n_flops_now:      %.4fG" % (n_params_now, n_flops_now))
+        ratio_param = (n_params_original - n_params_now) / n_params_original
+        ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
+        print("Redecution ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
         print("==> Begin to finetune")
     # ---
     
