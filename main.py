@@ -235,7 +235,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # Data loading code
     traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val3')
+    valdir = os.path.join(args.data, 'val3') if args.debug else os.path.join(args.data, 'val') # --- prune
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
@@ -269,8 +269,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     if args.evaluate:
         validate(val_loader, model, criterion, args)
-        # --- prune
-        # remove this to test before training
+        # --- prune: remove this to test before training
         # return
         # ---
 
@@ -303,7 +302,7 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Redecution ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
         print("==> Begin to finetune")
 
-        # lr schduler
+        # lr ft schduler
         lr_s = args.lr_ft
         if lr_s: # example: "0: 0.001, 50: 0.0001, 100: 0.0001"
             lr_schedule = {}
