@@ -22,7 +22,7 @@ import torchvision.models as models
 from pruner import l1_pruner
 from pruner import increg_pruner
 import logger as logger_
-from utils import get_n_params, get_n_flops
+from utils import get_n_params, get_n_flops, PresetLRScheduler
 # ---
 
 model_names = sorted(name for name in models.__dict__
@@ -93,10 +93,8 @@ parser.add_argument('--plot_weights_heatmap', action="store_true")
 parser.add_argument('--prune_ratio', type=float, default=0)
 parser.add_argument('--method', type=str, default="ED")
 parser.add_argument('--alpha_way', type=str, default="2")
-parser.add_argument('--lr_prune', type=float, default=5e-4)
-parser.add_argument('--lr_finetune', type=float, default=1e-3)
-parser.add_argument('--lr_schedule_finetune', type=str)
-parser.add_argument('--n_epoch_finetune', type=int, default=150)
+parser.add_argument('--lr_pr', type=float, default=5e-4)
+parser.add_argument('--lr_ft', type=str)
 parser.add_argument('--test_interval', type=int, default=1000)
 parser.add_argument('--layer_exempted', type=str, default="1")
 parser.add_argument('--copy_bn_w', action="store_true")
@@ -304,12 +302,31 @@ def main_worker(gpu, ngpus_per_node, args):
         ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
         print("Redecution ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
         print("==> Begin to finetune")
+
+        # lr schduler
+        lr_s = args.lr_ft
+        if lr_s: # example: "0: 0.001, 50: 0.0001, 100: 0.0001"
+            lr_schedule = {}
+            tmp = lr_s.split(",") if "," in lr_s else lr_s.split(";")
+            for x in tmp:
+                epoch = int(x.split(":")[0].strip())
+                lr = float(x.split(":")[1].strip())
+                lr_schedule[epoch] = lr
+        lr_scheduler = PresetLRScheduler(lr_schedule)
     # ---
     
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        adjust_learning_rate(optimizer, epoch, args)
+        
+        # --- prune: use our own lr scheduler
+        if args.method:
+            lr_scheduler(optimizer, epoch)
+            lr = lr_scheduler.get_lr(optimizer)
+            print("Set lr = %s" % lr)
+        else:
+            adjust_learning_rate(optimizer, epoch, args)
+        # ---
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
