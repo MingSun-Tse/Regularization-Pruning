@@ -6,6 +6,8 @@ from torch.autograd import Variable
 from pprint import pprint
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def _weights_init(m):
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
@@ -151,3 +153,24 @@ class PresetLRScheduler(object):
         for param_group in optimizer.param_groups:
             lr = param_group['lr']
             return lr
+
+def plot_weights_heatmap(weights, out_path):
+    '''
+        weights: [N, C, H, W]. Torch tensor
+        averaged in dim H, W so that we get a 2-dim color map of size [N, C]
+    '''
+    w_abs = weights.abs()
+    w_abs = w_abs.data.cpu().numpy()
+    
+    fig, ax = plt.subplots()
+    im = ax.imshow(w_abs, cmap='jet')
+
+    # make a beautiful colorbar        
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size=0.05, pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+
+    ax.set_xlabel("Channel")
+    ax.set_ylabel("Filter")
+    fig.savefig(out_path, dpi=200)
+    plt.close(fig)

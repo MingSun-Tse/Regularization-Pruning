@@ -23,6 +23,7 @@ from pruner import l1_pruner
 from pruner import increg_pruner
 import logger as logger_
 from utils import get_n_params, get_n_flops, PresetLRScheduler
+pjoin = os.path.join
 # ---
 
 model_names = sorted(name for name in models.__dict__
@@ -92,9 +93,9 @@ parser.add_argument('--stablize_interval', type=int, default=5000)
 parser.add_argument('--plot_weights_heatmap', action="store_true")
 parser.add_argument('--prune_ratio', type=float, default=0)
 parser.add_argument('--method', type=str, default="ED")
-parser.add_argument('--alpha_way', type=str, default="2")
 parser.add_argument('--lr_pr', type=float, default=5e-4)
 parser.add_argument('--lr_ft', type=str)
+parser.add_argument('--batch_size_pr', type=int, default=64, help="batch size when pruning")
 parser.add_argument('--test_interval', type=int, default=1000)
 parser.add_argument('--layer_exempted', type=str, default="1")
 parser.add_argument('--copy_bn_w', action="store_true")
@@ -104,6 +105,7 @@ parser.add_argument('--AdaReg_only_picking', action="store_true")
 parser.add_argument('--mag_ratio_limit', type=float, default=10)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
 args = parser.parse_args()
+
 logger = logger_.Logger(args)
 print = logger.log_printer
 args.copy_bn_w = True
@@ -277,13 +279,17 @@ def main_worker(gpu, ngpus_per_node, args):
     # Structured pruning is basically equivalent to providing a new weight initialization before finetuning,
     # so just before training, do pruning to obtain a new model.
     if args.method:
+        train_loader_pr = torch.utils.data.DataLoader(
+            train_dataset, batch_size=args.batch_size_pr, shuffle=(train_sampler is None),
+            num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+
         n_params_original = get_n_params(model)
         n_flops_original = get_n_flops(model, input_res=224)
 
         class runner: pass
         runner.test = validate
         runner.test_loader = val_loader
-        runner.train_loader = train_loader
+        runner.train_loader = train_loader_pr
         runner.criterion = criterion
         runner.args = args
         if args.method == "L1":
@@ -339,13 +345,25 @@ def main_worker(gpu, ngpus_per_node, args):
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'arch': args.arch,
-                'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
-                'optimizer' : optimizer.state_dict(),
-            }, is_best)
+            # save_checkpoint({
+            #     'epoch': epoch + 1,
+            #     'arch': args.arch,
+            #     'state_dict': model.state_dict(),
+            #     'best_acc1': best_acc1,
+            #     'optimizer' : optimizer.state_dict(),
+            # }, is_best)
+
+            # --- prune: use my own save func
+            state = {'epoch': epoch + 1,
+                     'arch': args.arch,
+                     'state_dict': model.state_dict(),
+                     'best_acc1': best_acc1,
+                     'optimizer': optimizer.state_dict(),
+                     'ExpID': logger.ExpID
+            }
+            save_model(state, is_best)
+            # ---
+            
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
@@ -443,6 +461,12 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
 
+def save_model(state, is_best=False):
+    out = pjoin(logger.weights_path, "model.pth")
+    torch.save(state, out)
+    if is_best:
+        out_best = pjoin(logger.weights_path, "model_best.pth")
+        torch.save(state, out_best)
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""

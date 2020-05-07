@@ -12,31 +12,23 @@ class Pruner:
         self.logger = logger
         self.print = logger.log_printer
         self.test = lambda net: runner.test(runner.test_loader, net, runner.criterion, runner.args)
+        self.train_loader = runner.train_loader
+        self.criterion = runner.criterion
         self._register_layer_kernel_size()
 
         self.pruned_chl = {}
         self.kept_chl = {}
-    
-    def _check_data_parallel(self):
-        self.data_parallel = False
-        if hasattr(self.model, "features"): # alexnet and vgg
-            if isinstance(self.model.features, nn.DataParallel):
-                self.n_seqs = len(self.model.features.module)
-                self.model.features = self.model.features.module
-                self.data_parallel = True
-            else:
-                self.n_seqs = len(self.model.features)
-        else:
-            if isinstance(self.model, nn.DataParallel):
-                self.data_parallel = True
-                self.model = self.model.module
-    
-    def _set_data_parallel(self):
-        if hasattr(self.model, "features"):
-            self.model.features = nn.DataParallel(self.model.features)
-        else:
-            self.model = nn.DataParallel(self.model).cuda()
-    
+
+    def _pick_chl(self, w_abs, pr, mode="min"):
+        C = len(w_abs.flatten())
+        if mode == "rand":
+            out = np.random.permutation(C)[:int(pr * C)]
+        elif mode == "min":
+            out = w_abs.flatten().sort()[1][:int(pr * C)]
+        elif mode == "max":
+            out = w_abs.flatten().sort()[1][-int(pr * C):]
+        return out
+
     def _register_layer_kernel_size(self):
         self.layer_kernel_size = OrderedDict()
         ix = -1
@@ -52,63 +44,6 @@ class Pruner:
         format_str = "[%3d] %{}s -- kernel_size: %s".format(max_len)
         for name, (ix, ks) in self.layer_kernel_size.items():
             print(format_str % (ix, name, ks))
-
-    # build a new model excluding the pruned channels
-    def _prune_and_build_new_model(self):
-        new_model = copy.deepcopy(self.model)
-        for ix in range(self.n_seqs):
-            m = self.model.features[ix]
-            if isinstance(m, nn.Conv2d):
-                kept_chl = self.kept_chl[m]
-                
-                # to see if rows need pruning
-                next_conv = self._next_conv(self.model, m)
-                if not next_conv:
-                    kept_row_index = range(m.weight.size(0))
-                else:
-                    kept_row_index = self.kept_chl[next_conv]
-                
-                # slice out kept weights and biases for conv
-                kept_weights = m.weight.data[kept_row_index][:, kept_chl, :, :]
-                new_conv = nn.Conv2d(kept_weights.size(1), kept_weights.size(0), m.kernel_size,
-                                  m.stride, m.padding, m.dilation, m.groups, len(m.bias)).cuda()
-                new_conv.weight.data.copy_(kept_weights) # load weights into the new module
-                if len(m.bias):
-                    kept_bias = m.bias.data[kept_row_index]
-                    new_conv.bias.data.copy_(kept_bias)
-                new_model.features[ix] = new_conv
-                
-                # get the corresponding bn layer, where the input_channel should be adjusted as well
-                k = 1
-                while ix + k < self.n_seqs and (not isinstance(self.model.features[ix + k], nn.BatchNorm2d)):
-                    if isinstance(self.model.features[ix + k], nn.Conv2d):
-                        break
-                    else:
-                        k += 1
-                if ix + k < self.n_seqs:
-                    if isinstance(self.model.features[ix + k], nn.BatchNorm2d):
-                        bn = self.model.features[ix + k]
-                        new_bn = nn.BatchNorm2d(len(kept_row_index), eps=bn.eps, momentum=bn.momentum, 
-                                affine=bn.affine, track_running_stats=bn.track_running_stats).cuda()
-                        
-                        # copy bn weight and bias
-                        if self.args.copy_bn_w:
-                            weight = bn.weight.data[kept_row_index]
-                            new_bn.weight.data.copy_(weight)
-                        if self.args.copy_bn_b:
-                            bias = bn.bias.data[kept_row_index]
-                            new_bn.bias.data.copy_(bias)
-                        
-                        # copy bn running stats
-                        new_bn.running_mean.data.copy_(bn.running_mean[kept_row_index])
-                        new_bn.running_var.data.copy_(bn.running_var[kept_row_index])
-                        new_bn.num_batches_tracked.data.copy_(bn.num_batches_tracked)
-                        new_model.features[ix + k] = new_bn
-        
-        self.model = new_model
-        t1 = time.time()
-        acc1 = self.test(self.model)
-        self.print("==> After  build_new_model, test acc = %.4f (time = %.2fs)" % (acc1, time.time()-t1))
 
     def _next_conv(self, model, m_name, mm):
         layer_names = list(self.layer_kernel_size.keys())
@@ -159,7 +94,43 @@ class Pruner:
             else:
                 obj = obj.__getattr__(s)
 
-    def _prune_and_build_new_model_resnet(self):
+    def _get_kept_chl_L1(self, prune_ratios):
+        conv_cnt = 0
+        for m in self.model.modules():
+            if isinstance(m, nn.Conv2d): # for now, we focus on conv layers
+                conv_cnt += 1
+                C = m.weight.size(1)
+                if conv_cnt in [1]:
+                    self.pruned_chl[m] = []
+                else:
+                    if isinstance(prune_ratios, dict):
+                        pr = prune_ratios[m]
+                    else:
+                        pr = prune_ratios
+                    w_abs = m.weight.abs().mean(dim=[0, 2, 3])
+                    self.pruned_chl[m] = self._pick_chl(w_abs, pr, self.args.pick_pruned)
+                self.kept_chl[m] = [i for i in range(C) if i not in self.pruned_chl[m]]
+
+    def _get_kept_chl_L1_resnet(self, prune_ratios):
+        conv_cnt = 0
+        just_passed_3x3 = False
+        for m in self.model.modules():
+            if isinstance(m, nn.Conv2d):
+                conv_cnt += 1
+                C = m.weight.size(1)
+                w_abs = m.weight.abs().mean(dim=[0, 2, 3]) 
+                pr = prune_ratios
+                if m.kernel_size == (3, 3):
+                    self.pruned_chl[m] = self._pick_chl(w_abs, pr, self.args.pick_pruned)
+                    just_passed_3x3 = True
+                elif  m.kernel_size == (1, 1) and just_passed_3x3:
+                    self.pruned_chl[m] = self._pick_chl(w_abs, pr, self.args.pick_pruned)
+                    just_passed_3x3 = False
+                else: # all the first 1x1 conv layers and non-3x3 conv layers
+                    self.pruned_chl[m] = []
+                self.kept_chl[m] = [i for i in range(C) if i not in self.pruned_chl[m]]
+                
+    def _prune_and_build_new_model(self):
         new_model = copy.deepcopy(self.model)
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
