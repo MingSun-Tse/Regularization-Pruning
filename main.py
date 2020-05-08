@@ -228,7 +228,7 @@ def main_worker(gpu, ngpus_per_node, args):
             if args.gpu is not None:
                 # best_acc1 may be from a checkpoint from a different GPU
                 best_acc1 = best_acc1.to(args.gpu)
-            # model.load_state_dict(checkpoint['state_dict'])
+            model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
@@ -298,16 +298,8 @@ def main_worker(gpu, ngpus_per_node, args):
             Pruner = l1_pruner.L1Pruner
         elif args.method == "IncReg":
             Pruner = increg_pruner.IncRegPruner
-        # pruner = Pruner(model, args, logger, runner)
-        # model = pruner.prune()
-        model = torch.load("ckpt.pth")["model"]
-        model.load_state_dict(torch.load(args.resume)['state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        # ckpt = {
-        #     'model': model,
-        #     'state_dict': model.state_dict(),
-        # }
-        # torch.save(ckpt, "ckpt.pth")
+        pruner = Pruner(model, args, logger, runner)
+        model = pruner.prune()
 
         n_params_now = get_n_params(model)
         n_flops_now = get_n_flops(model, input_res=224)
@@ -347,7 +339,7 @@ def main_worker(gpu, ngpus_per_node, args):
         train(train_loader, model, criterion, optimizer, epoch, args)
 
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args)
+        acc1, acc5 = validate(val_loader, model, criterion, args) # --- prune: added acc5
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
@@ -368,7 +360,8 @@ def main_worker(gpu, ngpus_per_node, args):
                      'arch': args.arch,
                      'model': model,
                      'state_dict': model.state_dict(),
-                     'best_acc1': best_acc1,
+                     'acc1': acc1,
+                     'acc5': acc5,
                      'optimizer': optimizer.state_dict(),
                      'ExpID': logger.ExpID,
             }
@@ -464,7 +457,7 @@ def validate(val_loader, model, criterion, args):
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
 
-    return top1.avg
+    return top1.avg, top5.avg # --- prune: added returning top5 acc
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):

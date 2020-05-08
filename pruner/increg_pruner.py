@@ -272,8 +272,8 @@ class IncRegPruner(Pruner):
                 
                 # Test
                 if total_iter % self.args.test_interval == 0:
-                    acc1 = self.test(self.model)
-                    self.print("Test acc = %.4f at total_iter = %d (before update)" % (acc1, total_iter))
+                    acc1, acc5 = self.test(self.model)
+                    self.print("Acc1 = %.4f, Acc5 = %.4f. Total_iter = %d (before update)" % (acc1, acc5, total_iter))
                     
                 if total_iter % self.args.print_interval == 0:
                     self.print("")

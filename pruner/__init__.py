@@ -182,5 +182,5 @@ class Pruner:
         self.model = new_model
 
         t1 = time.time()
-        acc1 = self.test(self.model)
-        self.print("==> After  build_new_model, test acc = %.4f (time = %.2fs)" % (acc1, time.time()-t1))
+        acc1, acc5 = self.test(self.model)
+        self.print("==> After  build_new_model, acc1 = %.4f, acc5 = %.4f (time = %.2fs)" % (acc1, acc5, time.time()-t1))
