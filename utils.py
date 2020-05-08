@@ -8,6 +8,8 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from collections import OrderedDict
+import copy
 
 def _weights_init(m):
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
@@ -29,6 +31,7 @@ def get_n_params(model=None):
     return total
 
 def get_n_flops(model=None, input_res=224, multiply_adds=True):
+    model = copy.deepcopy(model)
 
     prods = {}
     def save_hook(name):

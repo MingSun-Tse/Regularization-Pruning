@@ -19,6 +19,7 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 
 # --- prune
+import copy
 from pruner import l1_pruner
 from pruner import increg_pruner
 import logger as logger_
@@ -104,6 +105,7 @@ parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
 parser.add_argument('--mag_ratio_limit', type=float, default=10)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
+parser.add_argument('--resume_ExpID', type=str)
 args = parser.parse_args()
 
 logger = logger_.Logger(args)
@@ -226,7 +228,7 @@ def main_worker(gpu, ngpus_per_node, args):
             if args.gpu is not None:
                 # best_acc1 may be from a checkpoint from a different GPU
                 best_acc1 = best_acc1.to(args.gpu)
-            model.load_state_dict(checkpoint['state_dict'])
+            # model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
@@ -283,8 +285,8 @@ def main_worker(gpu, ngpus_per_node, args):
             train_dataset, batch_size=args.batch_size_pr, shuffle=(train_sampler is None),
             num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-        n_params_original = get_n_params(model)
-        n_flops_original = get_n_flops(model, input_res=224)
+        n_params_original = get_n_params(copy.deepcopy(model))
+        n_flops_original = get_n_flops(copy.deepcopy(model), input_res=224)
 
         class runner: pass
         runner.test = validate
@@ -296,8 +298,16 @@ def main_worker(gpu, ngpus_per_node, args):
             Pruner = l1_pruner.L1Pruner
         elif args.method == "IncReg":
             Pruner = increg_pruner.IncRegPruner
-        pruner = Pruner(model, args, logger, runner)
-        model = pruner.prune()
+        # pruner = Pruner(model, args, logger, runner)
+        # model = pruner.prune()
+        model = torch.load("ckpt.pth")["model"]
+        model.load_state_dict(torch.load(args.resume)['state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        # ckpt = {
+        #     'model': model,
+        #     'state_dict': model.state_dict(),
+        # }
+        # torch.save(ckpt, "ckpt.pth")
 
         n_params_now = get_n_params(model)
         n_flops_now = get_n_flops(model, input_res=224)
@@ -356,10 +366,11 @@ def main_worker(gpu, ngpus_per_node, args):
             # --- prune: use my own save func
             state = {'epoch': epoch + 1,
                      'arch': args.arch,
+                     'model': model,
                      'state_dict': model.state_dict(),
                      'best_acc1': best_acc1,
                      'optimizer': optimizer.state_dict(),
-                     'ExpID': logger.ExpID
+                     'ExpID': logger.ExpID,
             }
             save_model(state, is_best)
             # ---
@@ -462,10 +473,10 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 def save_model(state, is_best=False):
-    out = pjoin(logger.weights_path, "model.pth")
+    out = pjoin(logger.weights_path, "ckpt.pth")
     torch.save(state, out)
     if is_best:
-        out_best = pjoin(logger.weights_path, "model_best.pth")
+        out_best = pjoin(logger.weights_path, "ckpt_best.pth")
         torch.save(state, out_best)
 
 class AverageMeter(object):

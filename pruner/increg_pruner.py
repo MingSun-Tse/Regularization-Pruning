@@ -263,8 +263,6 @@ class IncRegPruner(Pruner):
         epoch = -1
         while True:
             epoch += 1
-            if self.prune_state == "finetune":
-                return
 
             for batch_idx, (inputs, targets) in enumerate(self.train_loader):
                 t1 = time.time()
@@ -355,7 +353,7 @@ class IncRegPruner(Pruner):
                     self.print("State 'stablize_reg' is done. Now prune at iter %d" % total_iter)
                     self._prune_and_build_new_model() 
                     self.print("Prune is done, go to next state 'finetune'")
-                    return
+                    return self.model
                 
                 if self.args.AdaReg_only_picking and self.all_layer_finish_picking:
                     self.print("AdaReg finishes picking pruned channels. Model pruned. Go to 'finetune'")
@@ -369,7 +367,7 @@ class IncRegPruner(Pruner):
                             self.pruned_chl.pop(m_old)
                     self.model = self.original_model # reload the original model
                     self._prune_and_build_new_model()
-                    return
+                    return self.model
                 
                 # t2 = time.time()
                 # total_time = t2 - t1
