@@ -22,7 +22,7 @@ import torchvision.models as models
 import copy
 from pruner import l1_pruner
 from pruner import increg_pruner
-from logger as Logger
+from logger import Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
 pjoin = os.path.join
 # ---
