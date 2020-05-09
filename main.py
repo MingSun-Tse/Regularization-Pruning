@@ -22,7 +22,7 @@ import torchvision.models as models
 import copy
 from pruner import l1_pruner
 from pruner import increg_pruner
-import logger as logger_
+from logger as Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
 pjoin = os.path.join
 # ---
@@ -87,6 +87,7 @@ parser.add_argument('--project_name', type=str, default="")
 parser.add_argument('--CodeID', type=str, default="")
 parser.add_argument('--debug', action="store_true")
 parser.add_argument('--screen_print', action="store_true")
+parser.add_argument('--resume_ExpID', type=str)
 parser.add_argument('--ave_reg_limit', type=float, default=0.05)
 parser.add_argument('--print_interval', type=int, default=100)
 parser.add_argument('--update_interval', type=int, default=2000)
@@ -105,10 +106,9 @@ parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
 parser.add_argument('--mag_ratio_limit', type=float, default=10)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
-parser.add_argument('--resume_ExpID', type=str)
 args = parser.parse_args()
 
-logger = logger_.Logger(args)
+logger = Logger(args)
 print = logger.log_printer
 args.copy_bn_w = True
 args.copy_bn_b = True
