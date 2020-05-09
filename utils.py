@@ -177,3 +177,4 @@ def plot_weights_heatmap(weights, out_path):
     ax.set_ylabel("Filter")
     fig.savefig(out_path, dpi=200)
     plt.close(fig)
+

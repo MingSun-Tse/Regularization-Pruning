@@ -31,7 +31,7 @@ class Pruner:
 
     def _register_layer_kernel_size(self):
         self.layer_kernel_size = OrderedDict()
-        ix = -1
+        ix = -1 # layer index
         max_len = 0
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
@@ -48,10 +48,13 @@ class Pruner:
     def _next_conv(self, model, m_name, mm):
         layer_names = list(self.layer_kernel_size.keys())
         layer_ix, ks = self.layer_kernel_size[m_name]
-        layer_before = layer_names[layer_ix - 1]
-        ks_before = self.layer_kernel_size[layer_before][1]
-        if ks == (1, 1) and ks_before == (3, 3):
+        layer_prev = layer_names[layer_ix - 1]
+        layer_next = layer_names[layer_ix + 1] if layer_ix + 1 < len(layer_names) else ""
+        ks_prev = self.layer_kernel_size[layer_prev][1]
+        if ks == (1, 1) and ks_prev == (3, 3):
             return None # the last 1x1 conv in a bottleneck layer #TODO: check if this works with other resnets
+        elif 'downsample' in layer_next:
+            return None
 
         ix_conv = 0
         ix_mm = -1
@@ -95,6 +98,9 @@ class Pruner:
                 obj = obj.__getattr__(s)
 
     def _get_kept_chl_L1(self, prune_ratios):
+        '''
+            Not considered dependence among layers. TODO: consider dependence.
+        '''
         conv_cnt = 0
         for m in self.model.modules():
             if isinstance(m, nn.Conv2d): # for now, we focus on conv layers
@@ -111,7 +117,10 @@ class Pruner:
                     self.pruned_chl[m] = self._pick_chl(w_abs, pr, self.args.pick_pruned)
                 self.kept_chl[m] = [i for i in range(C) if i not in self.pruned_chl[m]]
 
-    def _get_kept_chl_L1_resnet(self, prune_ratios):
+    def _get_kept_chl_L1_resnet_bottleneck(self, prune_ratios):
+        '''
+            For pruning resnet50, 101, 152, which adopt the bottleneck block.
+        '''
         conv_cnt = 0
         just_passed_3x3 = False
         for m in self.model.modules():
@@ -127,6 +136,29 @@ class Pruner:
                     self.pruned_chl[m] = self._pick_chl(w_abs, pr, self.args.pick_pruned)
                     just_passed_3x3 = False
                 else: # all the first 1x1 conv layers and non-3x3 conv layers
+                    self.pruned_chl[m] = []
+                self.kept_chl[m] = [i for i in range(C) if i not in self.pruned_chl[m]]
+
+    def _get_kept_chl_L1_resnet_basic(self, prune_ratios):
+        '''
+            For pruning resnet18, 34, which adopt the basic block.
+        '''
+        conv_cnt = 0
+        is_second_3x3 = False
+        for m in self.model.modules():
+            if isinstance(m, nn.Conv2d):
+                conv_cnt += 1
+                C = m.weight.size(1) # num of channel
+                w_abs = m.weight.abs().mean(dim=[0, 2, 3]) 
+                pr = prune_ratios
+                if m.kernel_size == (3, 3):
+                    if is_second_3x3:
+                        self.pruned_chl[m] = self._pick_chl(w_abs, pr, self.args.pick_pruned)
+                        is_second_3x3 = False
+                    else:
+                        self.pruned_chl[m] = []
+                        is_second_3x3 = True
+                else: # 1st conv layer and 1x1 layers
                     self.pruned_chl[m] = []
                 self.kept_chl[m] = [i for i in range(C) if i not in self.pruned_chl[m]]
                 
@@ -180,7 +212,8 @@ class Pruner:
                 self._replace_module(new_model, name, new_bn)
         
         self.model = new_model
+        print(self.model)
 
         t1 = time.time()
         acc1, acc5 = self.test(self.model)
-        self.print("==> After  build_new_model, acc1 = %.4f, acc5 = %.4f (time = %.2fs)" % (acc1, acc5, time.time()-t1))
+        self.print("==> After building the new model, acc1 = %.4f, acc5 = %.4f (time = %.2fs)" % (acc1, acc5, time.time()-t1))

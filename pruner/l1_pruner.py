@@ -12,10 +12,17 @@ class L1Pruner(Pruner):
         super(L1Pruner, self).__init__(model, args, logger, runner)
 
     def prune(self):
-        if self.args.arch.startswith('resnet'):
-            self._get_kept_chl_L1_resnet(self.args.prune_ratio)
+        arch = self.args.arch
+        if arch.startswith('resnet'):
+            if arch in ['resnet18', 'resnet34']:
+                self._get_kept_chl_L1_resnet_basic(self.args.prune_ratio)
+            elif arch in ['resnet50', 'resnet101', 'resnet152']:
+                self._get_kept_chl_L1_resnet_bottleneck(self.args.prune_ratio)
+            else:
+                raise NotImplementedError
             self._prune_and_build_new_model()
-        elif self.args.arch.startswith('alexnet') or self.args.arch.startswith('vgg'):
+
+        elif arch.startswith('alexnet') or arch.startswith('vgg'):
             self._get_kept_chl_L1(self.args.prune_ratio) # TODO: layer-wise pr
             self._prune_and_build_new_model()
         else:
