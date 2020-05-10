@@ -184,36 +184,7 @@ class Pruner:
                     self.pruned_channel[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
                 self.kept_channel[m] = [i for i in range(C) if i not in self.pruned_channel[m]]
     
-    def _get_kept_wg_L1_resnet_bottleneck(self, prune_ratios, wg='filter'):
-        '''
-            For pruning resnet50, 101, 152, which adopt the bottleneck block.
-        '''
-        conv_cnt = 0
-        just_passed_3x3 = False
-        for m in self.model.modules():
-            if isinstance(m, nn.Conv2d):
-                conv_cnt += 1
-                C = m.weight.size(1)
-                w_abs = m.weight.abs().mean(dim=[0, 2, 3]) 
-                pr = prune_ratios
-                if m.kernel_size == (3, 3):
-                    self.pruned_channel[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
-                    just_passed_3x3 = True
-                elif  m.kernel_size == (1, 1) and just_passed_3x3:
-                    self.pruned_channel[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
-                    just_passed_3x3 = False
-                else: # all the first 1x1 conv layers and non-3x3 conv layers
-                    self.pruned_channel[m] = []
-                self.kept_channel[m] = [i for i in range(C) if i not in self.pruned_channel[m]]
-
-    def _get_kept_wg_L1_resnet_basic(self, prune_ratios, wg="filter"):
-        '''
-            For pruning resnet18, 34, which adopt the basic block.
-        '''
-        # used for debug:
-        self.args.stage_pr = [0, 0.5, 0.6, 0.4, 0] # stage prune_ratio
-        self.args.skip_layers = ['1.0', '2.0', '2.3', '3.0', '3.5'] # within those pruned stages, spare several blocks
-
+    def _get_kept_wg_L1_resnet(self, prune_ratios, wg="filter"):
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
                 N, C, H, W = m.weight.size()
@@ -239,13 +210,12 @@ class Pruner:
                 # preset skip layers
                 layer_id = '%s.%s.%s' % (str(stage), str(seq_index), str(block_index))
                 for s in self.args.skip_layers:
-                    if layer_id.startswith(s):
+                    if s and layer_id.startswith(s):
                         pr = 0
 
-                # channel prune. do not prune the 1st conv
-                if wg == "channel" and block_index == 0:
-                    pr = 0
-                elif wg == "filter" and block_index == self.n_conv_within_block - 1:
+                # for channel/filter prune, do not prune the 1st/last conv in a block
+                if (wg == "channel" and block_index == 0) or \
+                    (wg == "filter" and block_index == self.n_conv_within_block - 1):
                     pr = 0
                 
                 pruned = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
@@ -317,10 +287,6 @@ class Pruner:
                 self._replace_module(new_model, name, new_bn)
         
         self.model = new_model
-        print(new_model)
+        # print(new_model)
         n_filter = self._get_n_filter(self.model)
         print(n_filter)
-
-        t1 = time.time()
-        acc1, acc5 = self.test(self.model)
-        self.print("==> After building the new model, acc1 = %.4f, acc5 = %.4f (time = %.2fs)" % (acc1, acc5, time.time()-t1))

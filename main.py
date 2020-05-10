@@ -24,6 +24,7 @@ from pruner import l1_pruner
 from pruner import increg_pruner
 from logger import Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
+from utils import strlist_to_list
 pjoin = os.path.join
 # ---
 
@@ -88,31 +89,37 @@ parser.add_argument('--CodeID', type=str, default="")
 parser.add_argument('--debug', action="store_true")
 parser.add_argument('--screen_print', action="store_true")
 parser.add_argument('--resume_ExpID', type=str)
-parser.add_argument('--ave_reg_limit', type=float, default=0.05)
 parser.add_argument('--print_interval', type=int, default=100)
+parser.add_argument('--test_interval', type=int, default=1000)
+
+# prune related
+parser.add_argument('--method', type=str, default="")
+parser.add_argument('--prune_ratio', type=float, default=0)
+parser.add_argument('--wg', type=str, default="filter", help='weight_group', choices=['filter', 'channel', 'weight'])
+parser.add_argument('--lr_pr', type=float, default=5e-4)
+parser.add_argument('--lr_ft', type=str, help="lr schedule for finetune")
+parser.add_argument('--stage_pr', type=str, default="[]", help="pruning ratios for different stages")
+parser.add_argument('--skip_layers', type=str, default="[]", help="layers not to prune")
+parser.add_argument('--batch_size_pr', type=int, default=64, help="batch size when pruning")
 parser.add_argument('--update_interval', type=int, default=2000)
 parser.add_argument('--stablize_interval', type=int, default=5000)
 parser.add_argument('--plot_weights_heatmap', action="store_true")
-parser.add_argument('--prune_ratio', type=float, default=0)
-parser.add_argument('--method', type=str, default="")
-parser.add_argument('--lr_pr', type=float, default=5e-4)
-parser.add_argument('--lr_ft', type=str)
-parser.add_argument('--batch_size_pr', type=int, default=64, help="batch size when pruning")
-parser.add_argument('--test_interval', type=int, default=1000)
-parser.add_argument('--layer_exempted', type=str, default="1")
 parser.add_argument('--copy_bn_w', action="store_true")
 parser.add_argument('--copy_bn_b', action="store_true")
 parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
+parser.add_argument('--ave_reg_limit', type=float, default=0.05)
 parser.add_argument('--mag_ratio_limit', type=float, default=10)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
-parser.add_argument('--wg', type=str, default="filter", help='weight_group', choices=['filter', 'channel', 'weight'])
 args = parser.parse_args()
 
 logger = Logger(args)
 print = logger.log_printer
 args.copy_bn_w = True
 args.copy_bn_b = True
+args.stage_pr = strlist_to_list(args.stage_pr, float)
+args.skip_layers = strlist_to_list(args.skip_layers, str)
+print(args.stage_pr)
 # ---
 
 best_acc1 = 0
@@ -274,9 +281,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     if args.evaluate:
         validate(val_loader, model, criterion, args)
-        # --- prune: remove this to test before training
-        # return
-        # ---
+        # return # --- prune: remove this to test before training
 
     # --- prune
     # Structured pruning is basically equivalent to providing a new weight initialization before finetuning,
@@ -308,7 +313,12 @@ def main_worker(gpu, ngpus_per_node, args):
         print("==> n_params_now:      %.4fM, n_flops_now:      %.4fG" % (n_params_now, n_flops_now))
         ratio_param = (n_params_original - n_params_now) / n_params_original
         ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
-        print("==> Redecution ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
+        print("==> Reduction ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
+
+        t1 = time.time()
+        acc1, acc5 = validate(val_loader, model, criterion, args)
+        print("==> After pruning, acc1 = %.4f, acc5 = %.4f (time = %.2fs)" % (acc1, acc5, time.time()-t1))
+
         print("==> Begin to finetune")
 
         # lr ft schduler
