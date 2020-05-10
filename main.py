@@ -318,8 +318,12 @@ def main_worker(gpu, ngpus_per_node, args):
         t1 = time.time()
         acc1, acc5 = validate(val_loader, model, criterion, args)
         print("==> After pruning, acc1 = %.4f, acc5 = %.4f (time = %.2fs)" % (acc1, acc5, time.time()-t1))
-
         print("==> Begin to finetune")
+
+        # since model is updated, update the optimizer
+        optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                    momentum=args.momentum,
+                                    weight_decay=args.weight_decay)
 
         # lr ft schduler
         lr_s = args.lr_ft

@@ -32,6 +32,7 @@ class IncRegPruner(Pruner):
         
         # init prune, to determine the pruned weights
         if self.args.method in ["FixReg", "IncReg"]:
+            self.args.update_interval = 1
             if self.args.arch.startswith("resnet"):
                 self._get_kept_wg_L1_resnet()
             elif self.args.arch.startswith("alexnet") or self.args.arch.startswith("vgg"):
@@ -380,7 +381,7 @@ class IncRegPruner(Pruner):
                     self.print("State 'stablize_reg' is done. Now prune at iter %d" % total_iter)
                     self._prune_and_build_new_model() 
                     self.print("Prune is done, go to next state 'finetune'")
-                    return self.model
+                    return copy.deepcopy(self.model)
                 
                 if self.args.AdaReg_only_picking and self.all_layer_finish_picking:
                     self.print("AdaReg finishes picking pruned channels. Model pruned. Go to 'finetune'")
@@ -394,7 +395,7 @@ class IncRegPruner(Pruner):
                             self.pruned_channel.pop(m_old)
                     self.model = self.original_model # reload the original model
                     self._prune_and_build_new_model()
-                    return self.model
+                    return copy.deepcopy(self.model)
                 
                 # t2 = time.time()
                 # total_time = t2 - t1
