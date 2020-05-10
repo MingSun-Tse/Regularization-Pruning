@@ -178,3 +178,14 @@ def plot_weights_heatmap(weights, out_path):
     fig.savefig(out_path, dpi=200)
     plt.close(fig)
 
+def strlist_to_list(str, type):
+    '''
+        example:
+        # self.args.stage_pr = [0, 0.3, 0.3, 0.3, 0]
+        # self.args.skip_layers = ['1.0', '2.0', '2.3', '3.0', '3.5']
+    '''
+    pass
+
+
+
+
