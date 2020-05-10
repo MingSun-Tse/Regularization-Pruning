@@ -32,7 +32,6 @@ class IncRegPruner(Pruner):
         
         # init prune, to determine the pruned weights
         if self.args.method in ["FixReg", "IncReg"]:
-            self.args.update_interval = 1
             if self.args.arch.startswith("resnet"):
                 self._get_kept_wg_L1_resnet()
             elif self.args.arch.startswith("alexnet") or self.args.arch.startswith("vgg"):
