@@ -23,20 +23,20 @@ class IncRegPruner(Pruner):
         self.iter_pick_pruned_finished = {}
         self.original_w_mag = {}
         self.ranking = {}
-        self.pruned_chl = {}
-        self.pruned_chl_L1 = {}
-        self.kept_chl = {}
+        self.pruned_channel = {}
+        self.pruned_channel_L1 = {}
+        self.kept_channel = {}
         self.all_layer_finish_picking = False
         if self.args.AdaReg_only_picking:
             self.original_model = copy.deepcopy(self.model)
         
-        # init
+        # init prune, to determine the pruned weights
         if self.args.method in ["FixReg", "IncReg"]:
             self.args.update_interval = 1
             if self.args.arch.startswith("resnet"):
-                self._get_kept_chl_L1_resnet(self.args.prune_ratio)
+                self._get_kept_wg_L1_resnet()
             elif self.args.arch.startswith("alexnet") or self.args.arch.startswith("vgg"):
-                self._get_kept_chl_L1(self.args.prune_ratio)
+                self._get_kept_wg_L1()
 
         self.prune_state = "update_reg"
         cnt_m = 0
@@ -68,17 +68,27 @@ class IncRegPruner(Pruner):
     def _get_volatility(self, ranking):
         return np.max(ranking[-10:]) - np.min(ranking[-10:])
     
-    def _get_mag_ratio(self, m, pruned_chl):
-        w_abs = m.weight.abs().mean(dim=[0,2,3])
+    def _get_mag_ratio(self, m, pruned):
         N, C, H, W = m.weight.size()
-        ave_mag_pruned = w_abs[pruned_chl].mean()
-        ave_mag_kept = (w_abs.sum() - w_abs[pruned_chl].sum()) / (C - len(pruned_chl))
-        mag_ratio = ave_mag_kept / ave_mag_pruned
-        if m in self.hist_mag_ratio.keys():
-            self.hist_mag_ratio[m] = self.hist_mag_ratio[m]* 0.9 + mag_ratio * 0.1
+        if self.args.wg == "channel":
+            w_abs = m.weight.abs().mean(dim=[0, 2, 3])
+            n_wg = C
+        elif self.args.wg == "filter":
+            w_abs = m.weight.abs().mean(dim=[1, 2, 3])
+            n_wg = N
+        
+        ave_mag_pruned = w_abs[pruned].mean()
+        ave_mag_kept = (w_abs.sum() - w_abs[pruned].sum()) / (n_wg - len(pruned))
+        if len(pruned):
+            mag_ratio = ave_mag_kept / ave_mag_pruned 
+            if m in self.hist_mag_ratio.keys():
+                self.hist_mag_ratio[m] = self.hist_mag_ratio[m]* 0.9 + mag_ratio * 0.1
+            else:
+                self.hist_mag_ratio[m] = mag_ratio
         else:
-            self.hist_mag_ratio[m] = mag_ratio
-        return mag_ratio
+            mag_ratio = 123456789
+            self.hist_mag_ratio[m] = 123456789
+        return mag_ratio, self.hist_mag_ratio[m]
 
     def _update_reg(self):
         cnt_m = 0
@@ -93,44 +103,60 @@ class IncRegPruner(Pruner):
                     continue
                     
                 N, C, H, W = m.weight.size()
-                w_abs = m.weight.abs().mean(dim=[0, 2, 3])
-                if self.args.method == "FixReg":
-                    self.reg[m][:, self.pruned_chl[m]] = 1e4 * self.args.weight_decay
+                if self.args.wg == "channel":
+                    w_abs = m.weight.abs().mean(dim=[0, 2, 3])
+                elif self.args.wg == "filter":
+                    w_abs = m.weight.abs().mean(dim=[1, 2, 3])
 
-                    mag_ratio = self._get_mag_ratio(m, self.pruned_chl[m])
-                    mag_ratio_now_before = w_abs[self.kept_chl[m]].mean() / self.original_w_mag[m]
+                if self.args.method == "FixReg":
+                    pruned = self.pruned_wg[m]
+                    kept = self.kept_wg[m]
+
+                    if self.args.wg == "channel":
+                        self.reg[m][:, pruned] = 1e4 * self.args.weight_decay
+                    elif self.args.wg == "filter":
+                        self.reg[m][pruned, :] = 1e4 * self.args.weight_decay
+
+                    mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned)
+                    mag_ratio_now_before = w_abs[kept].mean() / self.original_w_mag[m]
                     if self.total_iter % self.args.print_interval == 0:
-                        self.print("    Mag ratio = %.2f (%.2f)" % (mag_ratio, self.hist_mag_ratio[m]))
+                        self.print("    Mag ratio = %.2f (%.2f)" % (mag_ratio, hist_mag_ratio))
                         self.print("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % \
-                            (self.original_w_mag[m].item(), w_abs[self.kept_chl[m]].mean().item(), mag_ratio_now_before.item()))
+                            (self.original_w_mag[m].item(), w_abs[kept].mean().item(), mag_ratio_now_before.item()))
 
                     # determine if it is time to finish 'update_reg'. When mag ratio is stable.
                     finish_condition = self.total_iter > 10000 and \
-                        (mag_ratio - self.hist_mag_ratio[m]).abs() / self.hist_mag_ratio[m] < 0.001
+                        (mag_ratio - hist_mag_ratio).abs() / hist_mag_ratio < 0.001
 
                 elif self.args.method == "IncReg":
+                    pruned = self.pruned_wg[m]
+                    kept = self.kept_wg[m]
+                    
                     if self.reg[m].max() < 1e4 * self.args.weight_decay:
-                        self.reg[m][:, self.pruned_chl[m]] += self.args.weight_decay
+                        if self.args.wg == "channel":
+                            self.reg[m][:, pruned] += self.args.weight_decay
+                        elif self.args.wg == "filter":
+                            self.reg[m][pruned, :] += self.args.weight_decay
 
-                    mag_ratio = self._get_mag_ratio(m, self.pruned_chl[m])
-                    mag_ratio_now_before = w_abs[self.kept_chl[m]].mean() / self.original_w_mag[m]
+                    mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned)
+                    mag_ratio_now_before = w_abs[kept].mean() / self.original_w_mag[m]
                     if self.total_iter % self.args.print_interval == 0:
-                        self.print("    Mag ratio = %.2f (%.2f)" % (mag_ratio, self.hist_mag_ratio[m]))
+                        self.print("    Mag ratio = %.2f (%.2f)" % (mag_ratio, hist_mag_ratio))
                         self.print("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % \
-                            (self.original_w_mag[m].item(), w_abs[self.kept_chl[m]].mean().item(), mag_ratio_now_before.item()))
+                            (self.original_w_mag[m].item(), w_abs[kept].mean().item(), mag_ratio_now_before.item()))
                         
                     # determine if it is time to finish 'update_reg'. When mag ratio is stable.
                     finish_condition = self.total_iter > 10000 and \
-                        (mag_ratio - self.hist_mag_ratio[m]).abs() / self.hist_mag_ratio[m] < 0.001
+                        (mag_ratio - hist_mag_ratio).abs() / hist_mag_ratio < 0.001
 
                 elif self.args.method == "AdaReg":
                     if m in self.iter_pick_pruned_finished.keys():
                         # for pruned weights, push them more 
-                        self.reg[m][:, self.pruned_chl[m]] += self.args.weight_decay * 10
+                        self.reg[m][:, self.pruned_channel[m]] += self.args.weight_decay * 10
 
                         # for kept weights, bring them back
-                        current_w_mag = w_abs[self.kept_chl[m]].mean()
-                        self.reg[m][:, self.kept_chl[m]] = min((current_w_mag / self.original_w_mag[m] - 1) * self.args.weight_decay * 10, self.args.weight_decay)                        
+                        current_w_mag = w_abs[self.kept_channel[m]].mean()
+                        self.reg[m][:, self.kept_channel[m]] = min((current_w_mag / self.original_w_mag[m] - 1) * self.args.weight_decay * 10, self.args.weight_decay)                        
                     else:
                         self.reg[m] += self.args.weight_decay * 2
                         self.w[m] = m.weight.clone()
@@ -192,9 +218,9 @@ class IncRegPruner(Pruner):
                     if m not in self.iter_pick_pruned_finished.keys() and \
                             (self.hist_mag_ratio[m] > self.args.mag_ratio_limit or self.reg[m].max() > 0.2):
                         self.iter_pick_pruned_finished[m] = self.total_iter
-                        self.kept_chl[m] = kept_chl
-                        self.pruned_chl[m] = pruned_chl
-                        picked_chl_in_common = [i for i in pruned_chl if i in self.pruned_chl_L1[m]]
+                        self.kept_channel[m] = kept_chl
+                        self.pruned_channel[m] = pruned_chl
+                        picked_chl_in_common = [i for i in pruned_chl if i in self.pruned_channel_L1[m]]
                         common_ratio = len(picked_chl_in_common) / len(pruned_chl)
                         self.print("    Just finish picking the pruned. [%d]. Iter = %d" % (cnt_m, self.total_iter))
                         self.print("    %.2f channels chosen by L1 and AdaReg in common" % common_ratio)
@@ -223,13 +249,16 @@ class IncRegPruner(Pruner):
                                 (self.reg[m].min(), self.reg[m].mean(), self.reg[m].max()))
 
                 # check prune state                    
-                if len(self.pruned_chl[m]) == 0 or finish_condition:
+                if len(self.pruned_wg[m]) == 0 or finish_condition:
                     # after 'update_reg' stage, keep the reg to stablize weight magnitude
                     self.iter_update_reg_finished[m] = self.total_iter
                     self.print("    ! Just finish state 'update_reg'. [%d]. Iter = %d" % (cnt_m, self.total_iter))
                     
                     if self.args.method == "AdaReg":
-                        self.reg[m][:, self.kept_chl[m]] = self.args.weight_decay # set back to normal weight decay
+                        if self.args.wg == 'channel':
+                            self.reg[m][:, self.kept[m]] = self.args.weight_decay # set back to normal weight decay
+                        elif self.args.wg == 'filter':
+                            self.reg[m][self.kept[m], :] = self.args.weight_decay # set back to normal weight decay
 
                     # check if all layers finish 'update_reg'
                     self.prune_state = "stablize_reg"
@@ -263,7 +292,6 @@ class IncRegPruner(Pruner):
         epoch = -1
         while True:
             epoch += 1
-
             for batch_idx, (inputs, targets) in enumerate(self.train_loader):
                 t1 = time.time()
                 inputs, targets = inputs.cuda(), targets.cuda()
@@ -360,11 +388,11 @@ class IncRegPruner(Pruner):
                     
                     # update key
                     for m_old, m_new in zip(self.model.modules(), self.original_model.modules()):
-                        if m_old in self.kept_chl.keys():
-                            self.kept_chl[m_new] = self.kept_chl[m_old]
-                            self.pruned_chl[m_new] = self.pruned_chl[m_old]
-                            self.kept_chl.pop(m_old)
-                            self.pruned_chl.pop(m_old)
+                        if m_old in self.kept_channel.keys():
+                            self.kept_channel[m_new] = self.kept_channel[m_old]
+                            self.pruned_channel[m_new] = self.pruned_channel[m_old]
+                            self.kept_channel.pop(m_old)
+                            self.pruned_channel.pop(m_old)
                     self.model = self.original_model # reload the original model
                     self._prune_and_build_new_model()
                     return self.model

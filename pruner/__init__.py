@@ -50,10 +50,8 @@ class Pruner:
         if args.arch.startswith('resnet'):
             self._register_layers()
 
-        self.kept_channel = {}
-        self.pruned_channel = {}
-        self.kept_filter = {}
-        self.pruned_filter = {}
+        self.kept_wg = {}
+        self.pruned_wg = {} 
         
         # TODO: add block
         self.n_conv_within_block = 0
@@ -65,13 +63,13 @@ class Pruner:
     def _pick_pruned(self, w_abs, pr, mode="min"):
         if pr == 0:
             return []
-        C = len(w_abs.flatten())
+        n_wg = len(w_abs.flatten())
         if mode == "rand":
-            out = np.random.permutation(C)[:ceil(pr * C)]
+            out = np.random.permutation(n_wg)[:ceil(pr * n_wg)]
         elif mode == "min":
-            out = w_abs.flatten().sort()[1][:ceil(pr * C)]
+            out = w_abs.flatten().sort()[1][:ceil(pr * n_wg)]
         elif mode == "max":
-            out = w_abs.flatten().sort()[1][-ceil(pr * C):]
+            out = w_abs.flatten().sort()[1][-ceil(pr * n_wg):]
         return out
 
     def _register_layers(self):
@@ -164,7 +162,7 @@ class Pruner:
                     n_filter.append(m.weight.size(0))
         return n_filter
 
-    def _get_kept_wg_L1(self, prune_ratios, wg='filter'):
+    def _get_kept_wg_L1(self):
         '''
             Not considered dependence among layers. TODO: consider dependence.
         '''
@@ -184,7 +182,8 @@ class Pruner:
                     self.pruned_channel[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
                 self.kept_channel[m] = [i for i in range(C) if i not in self.pruned_channel[m]]
     
-    def _get_kept_wg_L1_resnet(self, prune_ratios, wg="filter"):
+    def _get_kept_wg_L1_resnet(self):
+        wg = self.args.wg
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
                 N, C, H, W = m.weight.size()
@@ -218,30 +217,26 @@ class Pruner:
                     (wg == "filter" and block_index == self.n_conv_within_block - 1):
                     pr = 0
                 
-                pruned = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
-                kept = [i for i in range(n_wg) if i not in pruned]
-                if wg == "channel":
-                    self.pruned_channel[m] = pruned
-                    self.kept_channel[m] = kept
-                elif wg == "filter":
-                    self.pruned_filter[m] = pruned
-                    self.kept_filter[m] = kept
+                self.pruned_wg[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
+                self.kept_wg[m] = [i for i in range(n_wg) if i not in self.pruned_wg[m]]
                 
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":
-            kept_chl = self.kept_channel[m]
+            kept_chl = self.kept_wg[m]
             next_conv = self._next_conv(self.model, name, m)
             if not next_conv:
                 kept_filter = range(m.weight.size(0))
             else:
-                kept_filter = self.kept_channel[next_conv]
+                kept_filter = self.kept_wg[next_conv]
+        
         elif self.args.wg == "filter":
-            kept_filter = self.kept_filter[m]
+            kept_filter = self.kept_wg[m]
             prev_conv = self._prev_conv(self.model, name, m)
             if not prev_conv:
                 kept_chl = range(m.weight.size(1))
             else:
-                kept_chl = self.kept_filter[prev_conv]
+                kept_chl = self.kept_wg[prev_conv]
+        
         return kept_filter, kept_chl
 
     def _prune_and_build_new_model(self):
