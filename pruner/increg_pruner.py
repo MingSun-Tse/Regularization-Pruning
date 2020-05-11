@@ -167,80 +167,81 @@ class IncRegPruner(Pruner):
                         elif self.args.wg == 'filter':
                             self.reg[m][self.kept_wg[m], :] = recover_reg
                     else:
-                        self.reg[m] += self.args.weight_decay * 2
+                        self.reg[m] += self.args.weight_decay
 
-                        # check ranking volatility
-                        current_ranking = w_abs.sort()[1] # ranking of different weight groups
-                        logtmp = "    Rank_volatility: "
-                        v = []
-                        cnt_reward = 0
-                        for i in range(n_wg):
-                            chl = current_ranking[i]
-                            self.ranking[m][chl].append(i)
-                            volatility = self._get_volatility(self.ranking[m][chl])
-                            logtmp += "%d " % volatility
-                            v.append(volatility)
+#                         # check ranking volatility
+#                         current_ranking = w_abs.sort()[1] # ranking of different weight groups
+#                         logtmp = "    Rank_volatility: "
+#                         v = []
+#                         cnt_reward = 0
+#                         for i in range(n_wg):
+#                             chl = current_ranking[i]
+#                             self.ranking[m][chl].append(i)
+#                             volatility = self._get_volatility(self.ranking[m][chl])
+#                             logtmp += "%d " % volatility
+#                             v.append(volatility)
 
-#                                 # Reg reward
-#                                 # if chl is good now and quite stable, it signs that this chl probably will be kept finally,
-#                                 # so reward it.
-#                                 if len(self.ranking[m][chl]) > 10:
-#                                     if i >= int(self.args.prune_ratio * C) and volatility <= 0.02 * C:
-#                                         cnt_reward += 1
-#                                         self.reg[m][:, chl] -= self.args.weight_decay * 4
-#                                         self.reg[m][:, chl] = torch.max(self.reg[m][:, chl], torch.zeros(N).cuda())
+# #                                 # Reg reward
+# #                                 # if chl is good now and quite stable, it signs that this chl probably will be kept finally,
+# #                                 # so reward it.
+# #                                 if len(self.ranking[m][chl]) > 10:
+# #                                     if i >= int(self.args.prune_ratio * C) and volatility <= 0.02 * C:
+# #                                         cnt_reward += 1
+# #                                         self.reg[m][:, chl] -= self.args.weight_decay * 4
+# #                                         self.reg[m][:, chl] = torch.max(self.reg[m][:, chl], torch.zeros(N).cuda())
 
-                        # print and plot
-                        if self.total_iter % self.args.print_interval == 0:
-                            self.print(logtmp)
-                            self.print("    Reward_ratio = %.4f" % (cnt_reward / C))
+#                         # print and plot
+#                         if self.total_iter % self.args.print_interval == 0:
+#                             self.print(logtmp)
+#                             self.print("    Reward_ratio = %.4f" % (cnt_reward / C))
 
-                            # plot
-                            # if self.total_iter % (self.args.print_interval * 10) == 0:
-                            #     fig, ax = plt.subplots()
-                            #     ax.plot(v)
-                            #     ax.set_ylim([0, 100])
-                            #     out = os.path.join(self.logger.logplt_path, "%d_iter%d_ranking.jpg" % 
-                            #                           (cnt_m, self.total_iter))
-                            #     fig.savefig(out)
-                            #     plt.close(fig)
+#                             # plot
+#                             # if self.total_iter % (self.args.print_interval * 10) == 0:
+#                             #     fig, ax = plt.subplots()
+#                             #     ax.plot(v)
+#                             #     ax.set_ylim([0, 100])
+#                             #     out = os.path.join(self.logger.logplt_path, "%d_iter%d_ranking.jpg" % 
+#                             #                           (cnt_m, self.total_iter))
+#                             #     fig.savefig(out)
+#                             #     plt.close(fig)
 
-                    # check magnitude ratio
-                    pruned_wg = self._get_pruned_wg(w_abs, 0.5) # current pruned chl
-                    kept_wg = [i for i in range(n_wg) if i not in pruned_wg]
-                    mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned_wg)
-                    mag_ratio_now_before = w_abs[kept_wg].mean() / self.original_w_mag[m]
-
-                    # print
+                    # print to check magnitude ratio
                     if self.total_iter % self.args.print_interval == 0:
+                        pruned_wg = self._get_pruned_wg(w_abs, 0.5) # current pruned chl
+                        kept_wg = [i for i in range(n_wg) if i not in pruned_wg]
+                        mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned_wg)
+                        mag_ratio_now_before = w_abs[kept_wg].mean() / self.original_w_mag[m]
+                        
                         logtmp1 = "    Pruned_wg (pr=%.4f): " % (len(pruned_wg) / n_wg)
                         for wg in pruned_wg:
                             logtmp1 += "%3d " % wg
-                        self.print(logtmp1 + "[%d]" % cnt_m)
+                        # self.print(logtmp1 + "[%d]" % cnt_m)
                         self.print("    Mag ratio = %.2f (%.2f) [%d]" % (mag_ratio, hist_mag_ratio, cnt_m))
                         self.print("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % \
                             (self.original_w_mag[m].item(), w_abs[kept_wg].mean().item(), mag_ratio_now_before.item()))
 
-                    # check if the picking finishes
-                    if m not in self.iter_pick_pruned_finished.keys() and \
-                            (hist_mag_ratio > self.args.mag_ratio_limit or self.reg[m].max() > 0.2):
-                        self.iter_pick_pruned_finished[m] = self.total_iter
-                        self.kept_wg[m] = kept_wg
-                        self.pruned_wg[m] = pruned_wg
-                        picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[m]]
-                        common_ratio = len(picked_wg_in_common) / len(pruned_wg)
-                        self.print("    Just finish picking the pruned. [%d]. Iter = %d" % (cnt_m, self.total_iter))
-                        self.print("    %.2f weight groups chosen by L1 and AdaReg in common" % common_ratio)
+#                     # check if the picking finishes
+#                     if m not in self.iter_pick_pruned_finished.keys() and \
+#                             (hist_mag_ratio > self.args.mag_ratio_limit or self.reg[m].max() > 0.2):
+#                         self.iter_pick_pruned_finished[m] = self.total_iter
+#                         self.kept_wg[m] = kept_wg
+#                         self.pruned_wg[m] = pruned_wg
+#                         picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[m]]
+#                         common_ratio = len(picked_wg_in_common) / len(pruned_wg)
+#                         self.print("    Just finish picking the pruned. [%d]. Iter = %d" % (cnt_m, self.total_iter))
+#                         self.print("    %.2f weight groups chosen by L1 and AdaReg in common" % common_ratio)
 
-                        # check if all layer finishes picking channels to prune
-                        self.all_layer_finish_picking = True
-                        for mm in self.model.modules():
-                            if isinstance(mm, nn.Conv2d):
-                                if mm not in self.iter_pick_pruned_finished.keys():
-                                    self.all_layer_finish_picking = False
-                                    break
+#                         # check if all layer finishes picking channels to prune
+#                         self.all_layer_finish_picking = True
+#                         for mm in self.model.modules():
+#                             if isinstance(mm, nn.Conv2d):
+#                                 if mm not in self.iter_pick_pruned_finished.keys():
+#                                     self.all_layer_finish_picking = False
+#                                     break
                     
-                    finish_condition = self.hist_mag_ratio[m] > 1000 and mag_ratio_now_before > 0.95
+#                     finish_condition = self.hist_mag_ratio[m] > 1000 and mag_ratio_now_before > 0.95
+                    finish_condition = 0
+
 
                 elif self.args.method == "OptReg":
                     delta_reg = self._get_delta_reg(m)
@@ -297,10 +298,10 @@ class IncRegPruner(Pruner):
                                 momentum=self.args.momentum,
                                 weight_decay=self.args.weight_decay)
         epoch = -1
+        t1 = time.time()
         while True:
             epoch += 1
             for batch_idx, (inputs, targets) in enumerate(self.train_loader):
-                t1 = time.time()
                 inputs, targets = inputs.cuda(), targets.cuda()
                 total_iter = epoch * len(self.train_loader) + batch_idx
                 self.total_iter = total_iter
@@ -405,7 +406,8 @@ class IncRegPruner(Pruner):
                     self._prune_and_build_new_model()
                     return copy.deepcopy(self.model)
                 
-                # t2 = time.time()
-                # total_time = t2 - t1
-                # if total_iter % 10 == 0:
-                #     self.print("speed = %.2f iter/s" % (1 / total_time))
+                if total_iter % self.args.print_interval == 0:
+                    t2 = time.time()
+                    total_time = t2 - t1
+                    self.print("speed = %.2f iter/s" % (self.args.print_interval / total_time))
+                    t1 = t2
