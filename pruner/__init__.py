@@ -45,6 +45,7 @@ class Pruner:
         self.test = lambda net: runner.test(runner.test_loader, net, runner.criterion, runner.args)
         self.train_loader = runner.train_loader
         self.criterion = runner.criterion
+        self.save = runner.save
         
         self.layer_kernel_size = OrderedDict()
         if args.arch.startswith('resnet'):

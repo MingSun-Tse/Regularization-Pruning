@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from collections import OrderedDict
 import copy
+import glob
 
 def _weights_init(m):
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
@@ -192,7 +193,11 @@ def strlist_to_list(sstr, ttype):
         out.append(x)
     return out
     
-
+def check_path(x):
+    complete_path = glob.glob(x)
+    assert(len(complete_path) == 1)
+    x = complete_path[0]
+    return x
 
 
 

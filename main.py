@@ -31,7 +31,7 @@ from pruner import l1_pruner
 from pruner import increg_pruner
 from logger import Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
-from utils import strlist_to_list
+from utils import strlist_to_list, check_path
 pjoin = os.path.join
 # ---
 
@@ -112,6 +112,7 @@ parser.add_argument('--stabilize_reg_interval', type=int, default=5000)
 parser.add_argument('--plot_weights_heatmap', action="store_true")
 parser.add_argument('--copy_bn_w', action="store_true")
 parser.add_argument('--copy_bn_b', action="store_true")
+parser.add_argument('--direct_ft_weights', type=str, default=None, help="when directly finetune a pruned model, this provides the weights path")
 parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
 parser.add_argument('--reg_upper_limit', type=float, default=1.)
@@ -125,6 +126,7 @@ args.copy_bn_w = True
 args.copy_bn_b = True
 args.stage_pr = strlist_to_list(args.stage_pr, float)
 args.skip_layers = strlist_to_list(args.skip_layers, str)
+args.direct_ft_weights = check_path(args.direct_ft_weights)
 print(args.stage_pr)
 # ---
 
@@ -298,21 +300,29 @@ def main_worker(gpu, ngpus_per_node, args):
             train_dataset, batch_size=args.batch_size_prune, shuffle=(train_sampler is None),
             num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-        n_params_original = get_n_params(copy.deepcopy(model))
-        n_flops_original = get_n_flops(copy.deepcopy(model), input_res=224)
+        n_params_original = get_n_params(model)
+        n_flops_original = get_n_flops(model, input_res=224)
 
-        class runner: pass
-        runner.test = validate
-        runner.test_loader = val_loader
-        runner.train_loader = train_loader_prune
-        runner.criterion = criterion
-        runner.args = args
-        if args.method == "L1":
-            Pruner = l1_pruner.L1Pruner
-        elif args.method.endswith("Reg"):
-            Pruner = increg_pruner.IncRegPruner
-        pruner = Pruner(model, args, logger, runner)
-        model = pruner.prune()
+        if args.direct_ft_weights:
+            state = torch.load(args.direct_ft_weights)
+            model = state['model'].cuda()
+            model.load_state_dict(state['state_dict'])
+            print("==> Load pretrained pruned model successfully: '{}'".format(args.direct_ft_weights))
+            # TODO: This demands the gpu number is the same as previous experiment. Get over it.
+        else:
+            class runner: pass
+            runner.test = validate
+            runner.test_loader = val_loader
+            runner.train_loader = train_loader_prune
+            runner.criterion = criterion
+            runner.args = args
+            runner.save = save_model
+            if args.method == "L1":
+                Pruner = l1_pruner.L1Pruner
+            elif args.method.endswith("Reg"):
+                Pruner = increg_pruner.IncRegPruner
+            pruner = Pruner(model, args, logger, runner)
+            model = pruner.prune()
 
         n_params_now = get_n_params(model)
         n_flops_now = get_n_flops(model, input_res=224)
@@ -326,6 +336,15 @@ def main_worker(gpu, ngpus_per_node, args):
         acc1, acc5 = validate(val_loader, model, criterion, args)
         print("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just finished pruning, about to finetune" % 
             (acc1, acc5, time.time()-t1))
+
+        state = {'arch': args.arch,
+                 'model': model,
+                 'state_dict': model.state_dict(),
+                 'acc1': acc1,
+                 'acc5': acc5,
+                 'ExpID': logger.ExpID,
+        }
+        save_model(state, mark="just_finish_prune")
 
         # since model is new, we need a new optimizer
         optimizer = torch.optim.SGD(model.parameters(), args.lr,
@@ -379,7 +398,7 @@ def main_worker(gpu, ngpus_per_node, args):
             #     'optimizer' : optimizer.state_dict(),
             # }, is_best)
 
-            # --- prune: use my own save func
+            # --- prune: use our own save func
             state = {'epoch': epoch + 1,
                      'arch': args.arch,
                      'model': model,
@@ -490,12 +509,16 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
 
-def save_model(state, is_best=False):
-    out = pjoin(logger.weights_path, "ckpt.pth")
+# --- prune: use our own save model function
+def save_model(state, is_best=False, mark=''):
+    out = pjoin(logger.weights_path, "checkpoint.pth")
     torch.save(state, out)
     if is_best:
-        out_best = pjoin(logger.weights_path, "ckpt_best.pth")
+        out_best = pjoin(logger.weights_path, "checkpoint_best.pth")
         torch.save(state, out_best)
+    if mark:
+        out_mark = pjoin(logger.weights_path, "checkpoint_{}.pth".format(mark))
+        torch.save(state, out_mark)
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""

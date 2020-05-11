@@ -220,7 +220,7 @@ class IncRegPruner(Pruner):
                         pruned_wg = self._pick_pruned_wg(w_abs, pr) # current pruned chl
                         kept_wg = [i for i in range(n_wg) if i not in pruned_wg]
                         mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned_wg)
-                        mag_ratio_now_before = w_abs[kept_wg].mean() / self.original_w_mag[m]
+                        self.mag_ratio_now_before = w_abs[kept_wg].mean() / self.original_w_mag[m]
                         
                         logtmp1 = "    Pruned_wg (pr=%.4f): " % (len(pruned_wg) / n_wg)
                         # for wg in pruned_wg:
@@ -228,7 +228,7 @@ class IncRegPruner(Pruner):
                         self.print(logtmp1 + "[%d]" % cnt_m)
                         self.print("    Mag ratio = %.2f (%.2f) [%d]" % (mag_ratio, hist_mag_ratio, cnt_m))
                         self.print("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % \
-                            (self.original_w_mag[m].item(), w_abs[kept_wg].mean().item(), mag_ratio_now_before.item()))
+                            (self.original_w_mag[m].item(), w_abs[kept_wg].mean().item(), self.mag_ratio_now_before.item()))
 
                     # check if picking finishes
                     if m not in self.iter_pick_pruned_finished.keys() and \
@@ -249,7 +249,7 @@ class IncRegPruner(Pruner):
                                     self.all_layer_finish_picking = False
                                     break
                     
-                    finish_condition = self.hist_mag_ratio[m] > 1000 and mag_ratio_now_before > 0.95
+                    finish_condition = self.hist_mag_ratio[m] > 1000 and self.mag_ratio_now_before > 0.95
 
                 elif self.args.method == "OptReg":
                     delta_reg = self._get_delta_reg(m)
