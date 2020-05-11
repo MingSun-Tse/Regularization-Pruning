@@ -1,3 +1,10 @@
+'''
+    This code is based on the official PyTorch ImageNet training example 'main.py'. Commit ID: 69d2798, 2020/04/23.
+    URL: https://github.com/pytorch/examples/tree/master/imagenet
+    All modified parts will be indicated by '--- prune' mark.
+    We will do our best to maintain back compatibility.
+    Questions to @mingsun-tse (wang.huan@husky.neu.edu).
+'''
 import argparse
 import os
 import random
@@ -284,7 +291,7 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Acc1 = {:.4f} Acc5 = {:.4f}".format(acc1, acc5))
 
     # --- prune
-    # Structured pruning is basically equivalent to providing a new weight initialization before finetuning,
+    # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
     # so just before training, do pruning to obtain a new model.
     if args.method:
         train_loader_prune = torch.utils.data.DataLoader(
@@ -320,12 +327,12 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just finished pruning, about to finetune" % 
             (acc1, acc5, time.time()-t1))
 
-        # since model is updated, update the optimizer
+        # since model is new, we need a new optimizer
         optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                     momentum=args.momentum,
                                     weight_decay=args.weight_decay)
 
-        # lr ft schduler
+        # lr finetune schduler
         lr_s = args.lr_ft
         if lr_s: # example: "0: 0.001, 50: 0.0001, 100: 0.0001"
             lr_schedule = {}

@@ -28,13 +28,15 @@ class IncRegPruner(Pruner):
         if self.args.AdaReg_only_picking:
             self.original_model = copy.deepcopy(self.model)
         
-        # init about prune, to determine the pruned weights
+        # prune_init, to determine the pruned weights
         # this will update the 'self.kept_wg' and 'self.pruned_wg' 
-        if self.args.method in ["FixReg", "IncReg"]:
-            if self.args.arch.startswith("resnet"):
-                self._get_kept_wg_L1_resnet()
-            elif self.args.arch.startswith("alexnet") or self.args.arch.startswith("vgg"):
-                self._get_kept_wg_L1()
+        if self.args.method.endswith('Reg'):
+            self._get_kept_wg_L1()
+            if self.args.method == "AdaReg":
+                for k, v in self.pruned_wg.items():
+                    self.pruned_wg_L1[k] = v
+                self.pruned_wg = {}
+                self.kept_wg = {}
 
         self.prune_state = "update_reg"
         if self.args.method.endswith("Reg"):
@@ -50,21 +52,28 @@ class IncRegPruner(Pruner):
                         n_wg = C
                     for _ in range(n_wg):
                         self.ranking[m].append([])
+
                 
-    def _get_pruned_wg(self, w, pr=None):
-        if pr:
+    def _pick_pruned_wg(self, w, pr):
+        if pr == 0:
+            return []
+        elif pr > 0:
             w = w.flatten()
-            return w.sort()[1][:int(pr * w.size(0))]
-        else:
+            return w.sort()[1][:math.ceil(pr * w.size(0))]
+        elif pr == -1: # automatically decide lr by each layer itself
             sorted_w, sorted_index = w.flatten().sort()
-            max_ratio = 0
+            max_gap = 0
             max_index = 0
             for i in range(len(sorted_w) - 1):
-                r = sorted_w[i+1:].mean() - sorted_w[:i+1].mean()
-                if r > max_ratio:
-                    max_ratio = r
+                # gap = sorted_w[i+1:].mean() - sorted_w[:i+1].mean()
+                gap = sorted_w[i+1] - sorted_w[i]
+                if gap > max_gap:
+                    max_gap = gap
                     max_index = i
-            return sorted_index[:max_index+1]
+            return sorted_index[:max_index + 1]
+        else:
+            self.print("Wrong pr. Please check.")
+            exit(1)
     
     def _get_volatility(self, ranking):
         return np.max(ranking[-10:]) - np.min(ranking[-10:])
@@ -93,15 +102,16 @@ class IncRegPruner(Pruner):
 
     def _update_reg(self):
         cnt_m = 0
-        for m in self.model.modules():
+        for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
                 cnt_m += 1
+                pr = self._get_layer_pr(name)
                 
-                if self.total_iter % self.args.print_interval == 0:
-                    self.print("[%d] Getting delta reg for module '%s' (iter = %d)" % (cnt_m, m, self.total_iter))
-                    
                 if m in self.iter_update_reg_finished.keys():
                     continue
+
+                if self.total_iter % self.args.print_interval == 0:
+                    self.print("[%d] Getting delta reg for module '%s' (iter = %d)" % (cnt_m, m, self.total_iter))
                     
                 N, C, H, W = m.weight.size()
                 if self.args.wg == "channel":
@@ -207,41 +217,39 @@ class IncRegPruner(Pruner):
 
                     # print to check magnitude ratio
                     if self.total_iter % self.args.print_interval == 0:
-                        pruned_wg = self._get_pruned_wg(w_abs, 0.5) # current pruned chl
+                        pruned_wg = self._pick_pruned_wg(w_abs, pr) # current pruned chl
                         kept_wg = [i for i in range(n_wg) if i not in pruned_wg]
                         mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned_wg)
                         mag_ratio_now_before = w_abs[kept_wg].mean() / self.original_w_mag[m]
                         
                         logtmp1 = "    Pruned_wg (pr=%.4f): " % (len(pruned_wg) / n_wg)
-                        for wg in pruned_wg:
-                            logtmp1 += "%3d " % wg
-                        # self.print(logtmp1 + "[%d]" % cnt_m)
+                        # for wg in pruned_wg:
+                        #     logtmp1 += "%3d " % wg
+                        self.print(logtmp1 + "[%d]" % cnt_m)
                         self.print("    Mag ratio = %.2f (%.2f) [%d]" % (mag_ratio, hist_mag_ratio, cnt_m))
                         self.print("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % \
                             (self.original_w_mag[m].item(), w_abs[kept_wg].mean().item(), mag_ratio_now_before.item()))
 
-#                     # check if the picking finishes
-#                     if m not in self.iter_pick_pruned_finished.keys() and \
-#                             (hist_mag_ratio > self.args.mag_ratio_limit or self.reg[m].max() > 0.2):
-#                         self.iter_pick_pruned_finished[m] = self.total_iter
-#                         self.kept_wg[m] = kept_wg
-#                         self.pruned_wg[m] = pruned_wg
-#                         picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[m]]
-#                         common_ratio = len(picked_wg_in_common) / len(pruned_wg)
-#                         self.print("    Just finish picking the pruned. [%d]. Iter = %d" % (cnt_m, self.total_iter))
-#                         self.print("    %.2f weight groups chosen by L1 and AdaReg in common" % common_ratio)
+                    # check if picking finishes
+                    if m not in self.iter_pick_pruned_finished.keys() and \
+                            (self.hist_mag_ratio[m] > self.args.mag_ratio_limit or self.reg[m].max() > 0.2):
+                        self.iter_pick_pruned_finished[m] = self.total_iter
+                        self.kept_wg[m] = kept_wg
+                        self.pruned_wg[m] = pruned_wg
+                        picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[m]]
+                        common_ratio = len(picked_wg_in_common) / len(pruned_wg) if len(pruned_wg) else -1
+                        self.print("    Just finish picking the pruned. [%d]. Iter = %d" % (cnt_m, self.total_iter))
+                        self.print("    %.2f weight groups chosen by L1 and AdaReg in common" % common_ratio)
 
-#                         # check if all layer finishes picking channels to prune
-#                         self.all_layer_finish_picking = True
-#                         for mm in self.model.modules():
-#                             if isinstance(mm, nn.Conv2d):
-#                                 if mm not in self.iter_pick_pruned_finished.keys():
-#                                     self.all_layer_finish_picking = False
-#                                     break
+                        # check if all layer finishes picking
+                        self.all_layer_finish_picking = True
+                        for mm in self.model.modules():
+                            if isinstance(mm, nn.Conv2d):
+                                if mm not in self.iter_pick_pruned_finished.keys():
+                                    self.all_layer_finish_picking = False
+                                    break
                     
-#                     finish_condition = self.hist_mag_ratio[m] > 1000 and mag_ratio_now_before > 0.95
-                    finish_condition = 0
-
+                    finish_condition = self.hist_mag_ratio[m] > 1000 and mag_ratio_now_before > 0.95
 
                 elif self.args.method == "OptReg":
                     delta_reg = self._get_delta_reg(m)
@@ -257,16 +265,19 @@ class IncRegPruner(Pruner):
                                 (self.reg[m].min(), self.reg[m].mean(), self.reg[m].max()))
 
                 # check prune state                    
-                if (m in self.pruned_wg and len(self.pruned_wg[m]) == 0) or finish_condition:
+                if pr == 0 or finish_condition:
                     # after 'update_reg' stage, keep the reg to stabilize weight magnitude
                     self.iter_update_reg_finished[m] = self.total_iter
                     self.print("    ! Just finish state 'update_reg'. [%d]. Iter = %d" % (cnt_m, self.total_iter))
                     
                     if self.args.method == "AdaReg":
-                        if self.args.wg == 'channel':
-                            self.reg[m][:, self.kept[m]] = self.args.weight_decay # set back to normal weight decay
-                        elif self.args.wg == 'filter':
-                            self.reg[m][self.kept[m], :] = self.args.weight_decay # set back to normal weight decay
+                        if pr == 0:
+                            self.reg[m] = torch.zeros_like(self.reg[m]).cuda()
+                        else:
+                            if self.args.wg == 'channel':
+                                self.reg[m][:, self.kept_wg[m]] = 0 
+                            elif self.args.wg == 'filter':
+                                self.reg[m][self.kept_wg[m], :] = 0
 
                     # check if all layers finish 'update_reg'
                     self.prune_state = "stabilize_reg"

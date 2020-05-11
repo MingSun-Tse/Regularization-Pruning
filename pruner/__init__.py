@@ -162,7 +162,7 @@ class Pruner:
                     n_filter.append(m.weight.size(0))
         return n_filter
 
-    def _get_kept_wg_L1(self):
+    def _get_kept_wg_L1_vgg(self):
         '''
             Not considered dependence among layers. TODO: consider dependence.
         '''
@@ -182,6 +182,35 @@ class Pruner:
                     self.pruned_channel[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
                 self.kept_channel[m] = [i for i in range(C) if i not in self.pruned_channel[m]]
     
+    def _get_layer_pr(self, name):
+        '''
+            This function will determine the prune_ratio (pr) for each specific layer
+            by a set of rules.
+        '''
+        wg = self.args.wg
+        stage = self.layers[name].stage
+        seq_index = self.layers[name].seq_index
+        block_index = self.layers[name].block_index
+        is_shortcut = self.layers[name].is_shortcut
+        pr = self.args.stage_pr[stage]
+        
+        # do not prune the shortcut layers (for now)
+        if is_shortcut:
+            pr = 0
+        
+        # do not prune layers we set to be skipped
+        layer_id = '%s.%s.%s' % (str(stage), str(seq_index), str(block_index))
+        for s in self.args.skip_layers:
+            if s and layer_id.startswith(s):
+                pr = 0
+
+        # for channel/filter prune, do not prune the 1st/last conv in a block
+        if (wg == "channel" and block_index == 0) or \
+            (wg == "filter" and block_index == self.n_conv_within_block - 1):
+            pr = 0
+        
+        return pr
+
     def _get_kept_wg_L1_resnet(self):
         wg = self.args.wg
         for name, m in self.model.named_modules():
@@ -197,29 +226,17 @@ class Pruner:
                     w_abs = m.weight.abs()
                     n_wg = m.weight.numel()
                 
-                stage = self.layers[name].stage
-                seq_index = self.layers[name].seq_index
-                block_index = self.layers[name].block_index
-                is_shortcut = self.layers[name].is_shortcut
-                pr = self.args.stage_pr[stage]
-
-                if is_shortcut:
-                    pr = 0
-                
-                # preset skip layers
-                layer_id = '%s.%s.%s' % (str(stage), str(seq_index), str(block_index))
-                for s in self.args.skip_layers:
-                    if s and layer_id.startswith(s):
-                        pr = 0
-
-                # for channel/filter prune, do not prune the 1st/last conv in a block
-                if (wg == "channel" and block_index == 0) or \
-                    (wg == "filter" and block_index == self.n_conv_within_block - 1):
-                    pr = 0
-                
+                pr = self._get_layer_pr(name)
                 self.pruned_wg[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
                 self.kept_wg[m] = [i for i in range(n_wg) if i not in self.pruned_wg[m]]
-                
+    
+    def _get_kept_wg_L1(self):
+        arch = self.args.arch
+        if arch.startswith("resnet"):
+            self._get_kept_wg_L1_resnet()
+        elif arch.startswith("alexnet") or arch.startswith("vgg"):
+            self._get_kept_wg_L1_vgg()
+
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":
             kept_chl = self.kept_wg[m]

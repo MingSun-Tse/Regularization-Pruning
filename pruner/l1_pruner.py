@@ -11,13 +11,7 @@ class L1Pruner(Pruner):
         super(L1Pruner, self).__init__(model, args, logger, runner)
 
     def prune(self):
-        arch = self.args.arch
-        if arch.startswith('resnet'):
-            self._get_kept_wg_L1_resnet()
-        elif arch.startswith('alexnet') or arch.startswith('vgg'):
-            self._get_kept_wg_L1()
-        else:
-            raise NotImplementedError
+        self._get_kept_wg_L1()
         self._prune_and_build_new_model()
                     
         if self.args.reinit:
