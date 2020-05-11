@@ -194,9 +194,10 @@ def strlist_to_list(sstr, ttype):
     return out
     
 def check_path(x):
-    complete_path = glob.glob(x)
-    assert(len(complete_path) == 1)
-    x = complete_path[0]
+    if x:
+        complete_path = glob.glob(x)
+        assert(len(complete_path) == 1)
+        x = complete_path[0]
     return x
 
 
