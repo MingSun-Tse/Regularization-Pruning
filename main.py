@@ -90,25 +90,24 @@ parser.add_argument('--debug', action="store_true")
 parser.add_argument('--screen_print', action="store_true")
 parser.add_argument('--resume_ExpID', type=str)
 parser.add_argument('--print_interval', type=int, default=100)
-parser.add_argument('--test_interval', type=int, default=1000)
+parser.add_argument('--test_interval', type=int, default=2000)
 
 # prune related
 parser.add_argument('--method', type=str, default="")
-parser.add_argument('--prune_ratio', type=float, default=0)
 parser.add_argument('--wg', type=str, default="filter", help='weight_group', choices=['filter', 'channel', 'weight'])
-parser.add_argument('--lr_pr', type=float, default=5e-4)
+parser.add_argument('--lr_prune', type=float, default=1e-3)
 parser.add_argument('--lr_ft', type=str, help="lr schedule for finetune")
 parser.add_argument('--stage_pr', type=str, default="[]", help="pruning ratios for different stages")
 parser.add_argument('--skip_layers', type=str, default="[]", help="layers not to prune")
-parser.add_argument('--batch_size_pr', type=int, default=64, help="batch size when pruning")
-parser.add_argument('--update_interval', type=int, default=2000)
-parser.add_argument('--stablize_interval', type=int, default=5000)
+parser.add_argument('--batch_size_prune', type=int, default=64, help="batch size when pruning")
+parser.add_argument('--update_reg_interval', type=int, default=1)
+parser.add_argument('--stabilize_reg_interval', type=int, default=5000)
 parser.add_argument('--plot_weights_heatmap', action="store_true")
 parser.add_argument('--copy_bn_w', action="store_true")
 parser.add_argument('--copy_bn_b', action="store_true")
 parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
-parser.add_argument('--ave_reg_limit', type=float, default=0.05)
+parser.add_argument('--reg_upper_limit', type=float, default=1.)
 parser.add_argument('--mag_ratio_limit', type=float, default=10)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
 args = parser.parse_args()
@@ -288,8 +287,8 @@ def main_worker(gpu, ngpus_per_node, args):
     # Structured pruning is basically equivalent to providing a new weight initialization before finetuning,
     # so just before training, do pruning to obtain a new model.
     if args.method:
-        train_loader_pr = torch.utils.data.DataLoader(
-            train_dataset, batch_size=args.batch_size_pr, shuffle=(train_sampler is None),
+        train_loader_prune = torch.utils.data.DataLoader(
+            train_dataset, batch_size=args.batch_size_prune, shuffle=(train_sampler is None),
             num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
         n_params_original = get_n_params(copy.deepcopy(model))
@@ -298,7 +297,7 @@ def main_worker(gpu, ngpus_per_node, args):
         class runner: pass
         runner.test = validate
         runner.test_loader = val_loader
-        runner.train_loader = train_loader_pr
+        runner.train_loader = train_loader_prune
         runner.criterion = criterion
         runner.args = args
         if args.method == "L1":

@@ -32,7 +32,6 @@ class IncRegPruner(Pruner):
         
         # init prune, to determine the pruned weights
         if self.args.method in ["FixReg", "IncReg"]:
-            self.args.update_interval = 1
             if self.args.arch.startswith("resnet"):
                 self._get_kept_wg_L1_resnet()
             elif self.args.arch.startswith("alexnet") or self.args.arch.startswith("vgg"):
@@ -132,12 +131,10 @@ class IncRegPruner(Pruner):
                     pruned = self.pruned_wg[m]
                     kept = self.kept_wg[m]
                     
-                    if self.reg[m].max() < 1e4 * self.args.weight_decay:
-                        if self.args.wg == "channel":
-                            self.reg[m][:, pruned] += self.args.weight_decay
-                        elif self.args.wg == "filter":
-                            # self.reg[m][pruned, :] += self.args.weight_decay
-                            self.reg[m] += self.args.weight_decay
+                    if self.args.wg == "channel":
+                        self.reg[m][:, pruned] += self.args.weight_decay
+                    elif self.args.wg == "filter":
+                        self.reg[m][pruned, :] += self.args.weight_decay
 
                     mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned)
                     mag_ratio_now_before = w_abs[kept].mean() / self.original_w_mag[m]
@@ -146,9 +143,8 @@ class IncRegPruner(Pruner):
                         self.print("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % \
                             (self.original_w_mag[m].item(), w_abs[kept].mean().item(), mag_ratio_now_before.item()))
                         
-                    # determine if it is time to finish 'update_reg'. When mag ratio is stable.
-                    finish_condition = self.total_iter > 10000 and \
-                        (mag_ratio - hist_mag_ratio).abs() / hist_mag_ratio < 0.001
+                    # determine if it is time to finish 'update_reg'
+                    finish_condition = self.reg[m].max() >= self.args.reg_upper_limit
 
                 elif self.args.method == "AdaReg":
                     if m in self.iter_pick_pruned_finished.keys():
@@ -251,7 +247,7 @@ class IncRegPruner(Pruner):
 
                 # check prune state                    
                 if len(self.pruned_wg[m]) == 0 or finish_condition:
-                    # after 'update_reg' stage, keep the reg to stablize weight magnitude
+                    # after 'update_reg' stage, keep the reg to stabilize weight magnitude
                     self.iter_update_reg_finished[m] = self.total_iter
                     self.print("    ! Just finish state 'update_reg'. [%d]. Iter = %d" % (cnt_m, self.total_iter))
                     
@@ -262,15 +258,15 @@ class IncRegPruner(Pruner):
                             self.reg[m][self.kept[m], :] = self.args.weight_decay # set back to normal weight decay
 
                     # check if all layers finish 'update_reg'
-                    self.prune_state = "stablize_reg"
+                    self.prune_state = "stabilize_reg"
                     for mm in self.model.modules():
                         if isinstance(mm, nn.Conv2d):
                             if mm not in self.iter_update_reg_finished.keys():
                                 self.prune_state = "update_reg"
                                 break
-                    if self.prune_state == "stablize_reg":
-                        self.iter_stablize_reg = self.total_iter
-                        self.print("    ! All layers have finished state 'update_reg', go to next state 'stablize_reg'")
+                    if self.prune_state == "stabilize_reg":
+                        self.iter_stabilize_reg = self.total_iter
+                        self.print("    ! All layers have finished state 'update_reg', go to next state 'stabilize_reg'")
 
     def _get_delta_reg(self, m):
         pass
@@ -287,7 +283,7 @@ class IncRegPruner(Pruner):
     def prune(self):
         self.model = self.model.train()
         optimizer = optim.SGD(self.model.parameters(), 
-                                lr=self.args.lr_pr, 
+                                lr=self.args.lr_prune, 
                                 momentum=self.args.momentum,
                                 weight_decay=self.args.weight_decay)
         epoch = -1
@@ -312,7 +308,7 @@ class IncRegPruner(Pruner):
                 # forward
                 y_ = self.model(inputs)
                 
-                if self.prune_state == "update_reg" and total_iter % self.args.update_interval == 0:
+                if self.prune_state == "update_reg" and total_iter % self.args.update_reg_interval == 0:
                     if self.args.method == "OptReg":
                         # estimate K-FAC fisher as Hessian
                         softmax_y = y_.softmax(dim=1)
@@ -379,8 +375,8 @@ class IncRegPruner(Pruner):
                             plot_weights_heatmap(self.reg[m], out_path2)
                             
                 # Change prune state
-                if self.prune_state == "stablize_reg" and total_iter - self.iter_stablize_reg > self.args.stablize_interval:
-                    self.print("State 'stablize_reg' is done. Now prune at iter %d" % total_iter)
+                if self.prune_state == "stabilize_reg" and total_iter - self.iter_stabilize_reg > self.args.stabilize_reg_interval:
+                    self.print("State 'stabilize_reg' is done. Now prune at iter %d" % total_iter)
                     self._prune_and_build_new_model() 
                     self.print("Prune is done, go to next state 'finetune'")
                     return copy.deepcopy(self.model)
