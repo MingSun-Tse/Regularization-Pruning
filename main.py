@@ -109,7 +109,7 @@ parser.add_argument('--skip_layers', type=str, default="[]", help="layers not to
 parser.add_argument('--batch_size_prune', type=int, default=64, help="batch size when pruning")
 parser.add_argument('--update_reg_interval', type=int, default=1)
 parser.add_argument('--stabilize_reg_interval', type=int, default=5000)
-parser.add_argument('--plot_weights_heatmap', action="store_true")
+parser.add_argument('--plot_interval', type=int, default=100)
 parser.add_argument('--copy_bn_w', action="store_true")
 parser.add_argument('--copy_bn_b', action="store_true")
 parser.add_argument('--direct_ft_weights', type=str, default=None, help="when directly finetune a pruned model, this provides the weights path")
