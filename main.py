@@ -381,12 +381,13 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # evaluate on validation set
         acc1, acc5 = validate(val_loader, model, criterion, args) # --- prune: added acc5
-        print("Acc1 = %.4f Acc5 = %.4f Epoch = %d (after update) [prune_state = finetune]" % 
-            (acc1, acc5, epoch))
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
+
+        print("Acc1 = %.4f Acc5 = %.4f Epoch = %d (after update) [prune_state = finetune] (best Acc1 = %.4f)" % 
+            (acc1, acc5, epoch, best_acc1))
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
