@@ -23,14 +23,13 @@ class IncRegPruner(Pruner):
         self.iter_pick_pruned_finished = {}
         self.original_w_mag = {}
         self.ranking = {}
-        self.pruned_channel = {}
-        self.pruned_channel_L1 = {}
-        self.kept_channel = {}
+        self.pruned_wg_L1 = {}
         self.all_layer_finish_picking = False
         if self.args.AdaReg_only_picking:
             self.original_model = copy.deepcopy(self.model)
         
         # init prune, to determine the pruned weights
+        # this will update the 'self.kept_wg' and 'self.pruned_wg' 
         if self.args.method in ["FixReg", "IncReg"]:
             if self.args.arch.startswith("resnet"):
                 self._get_kept_wg_L1_resnet()
@@ -149,14 +148,13 @@ class IncRegPruner(Pruner):
                 elif self.args.method == "AdaReg":
                     if m in self.iter_pick_pruned_finished.keys():
                         # for pruned weights, push them more 
-                        self.reg[m][:, self.pruned_channel[m]] += self.args.weight_decay * 10
+                        self.reg[m][:, self.pruned_wg[m]] += self.args.weight_decay * 10
 
                         # for kept weights, bring them back
-                        current_w_mag = w_abs[self.kept_channel[m]].mean()
-                        self.reg[m][:, self.kept_channel[m]] = min((current_w_mag / self.original_w_mag[m] - 1) * self.args.weight_decay * 10, self.args.weight_decay)                        
+                        current_w_mag = w_abs[self.kept_wg[m]].mean()
+                        self.reg[m][:, self.kept_wg[m]] = min((current_w_mag / self.original_w_mag[m] - 1) * self.args.weight_decay * 10, self.args.weight_decay)                        
                     else:
                         self.reg[m] += self.args.weight_decay * 2
-                        self.w[m] = m.weight.clone()
 
                         # check ranking volatility
                         current_ranking = w_abs.sort()[1] # ranking of different weight groups
@@ -189,16 +187,15 @@ class IncRegPruner(Pruner):
                                 fig, ax = plt.subplots()
                                 ax.plot(v)
                                 ax.set_ylim([0, 100])
-                                out = os.path.join(self.logger_my.logplt_path, "%d_iter%d_ranking.jpg" % 
+                                out = os.path.join(self.logger.logplt_path, "%d_iter%d_ranking.jpg" % 
                                                       (cnt_m, self.total_iter))
                                 fig.savefig(out)
                                 plt.close(fig)
 
-
                     # check magnitude ratio
-                    pruned_chl = self._get_pruned_channel(w_abs, self.args.prune_ratio) # current pruned chl
+                    pruned_chl = self._get_pruned_channel(w_abs, 0.5) # current pruned chl
                     kept_chl = [i for i in range(C) if i not in pruned_chl]
-                    mag_ratio = self._get_mag_ratio(m, pruned_chl)
+                    mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned_chl)
                     mag_ratio_now_before = w_abs[kept_chl].mean() / self.original_w_mag[m]
 
                     # print
@@ -207,17 +204,17 @@ class IncRegPruner(Pruner):
                         for c in pruned_chl:
                             logtmp1 += "%3d " % c
                         self.print(logtmp1 + "[%d]" % cnt_m)
-                        self.print("    Mag ratio = %.2f (%.2f) [%d]" % (mag_ratio, self.hist_mag_ratio[m], cnt_m))
+                        self.print("    Mag ratio = %.2f (%.2f) [%d]" % (mag_ratio, hist_mag_ratio, cnt_m))
                         self.print("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % \
                             (self.original_w_mag[m].item(), w_abs[kept_chl].mean().item(), mag_ratio_now_before.item()))
 
                     # check if the picking finishes
                     if m not in self.iter_pick_pruned_finished.keys() and \
-                            (self.hist_mag_ratio[m] > self.args.mag_ratio_limit or self.reg[m].max() > 0.2):
+                            (hist_mag_ratio > self.args.mag_ratio_limit or self.reg[m].max() > 0.2):
                         self.iter_pick_pruned_finished[m] = self.total_iter
-                        self.kept_channel[m] = kept_chl
-                        self.pruned_channel[m] = pruned_chl
-                        picked_chl_in_common = [i for i in pruned_chl if i in self.pruned_channel_L1[m]]
+                        self.kept_wg[m] = kept_chl
+                        self.pruned_wg[m] = pruned_chl
+                        picked_chl_in_common = [i for i in pruned_chl if i in self.pruned_wg_L1[m]]
                         common_ratio = len(picked_chl_in_common) / len(pruned_chl)
                         self.print("    Just finish picking the pruned. [%d]. Iter = %d" % (cnt_m, self.total_iter))
                         self.print("    %.2f channels chosen by L1 and AdaReg in common" % common_ratio)
@@ -246,7 +243,7 @@ class IncRegPruner(Pruner):
                                 (self.reg[m].min(), self.reg[m].mean(), self.reg[m].max()))
 
                 # check prune state                    
-                if len(self.pruned_wg[m]) == 0 or finish_condition:
+                if (m in self.pruned_wg and len(self.pruned_wg[m]) == 0) or finish_condition:
                     # after 'update_reg' stage, keep the reg to stabilize weight magnitude
                     self.iter_update_reg_finished[m] = self.total_iter
                     self.print("    ! Just finish state 'update_reg'. [%d]. Iter = %d" % (cnt_m, self.total_iter))
@@ -367,9 +364,9 @@ class IncRegPruner(Pruner):
                     for m in self.modules:
                         cnt_m += 1
                         if isinstance(m, nn.Conv2d):
-                            out_path1 = os.path.join(self.logger_my.logplt_path, "m%d_iter%d_weights_heatmap.jpg" % 
+                            out_path1 = os.path.join(self.logger.logplt_path, "m%d_iter%d_weights_heatmap.jpg" % 
                                     (cnt_m, total_iter))
-                            out_path2 = os.path.join(self.logger_my.logplt_path, "m%d_iter%d_reg_heatmap.jpg" % 
+                            out_path2 = os.path.join(self.logger.logplt_path, "m%d_iter%d_reg_heatmap.jpg" % 
                                     (cnt_m, total_iter))
                             plot_weights_heatmap(m.weight.mean(dim=[2, 3]), out_path1)
                             plot_weights_heatmap(self.reg[m], out_path2)
@@ -386,11 +383,11 @@ class IncRegPruner(Pruner):
                     
                     # update key
                     for m_old, m_new in zip(self.model.modules(), self.original_model.modules()):
-                        if m_old in self.kept_channel.keys():
-                            self.kept_channel[m_new] = self.kept_channel[m_old]
-                            self.pruned_channel[m_new] = self.pruned_channel[m_old]
-                            self.kept_channel.pop(m_old)
-                            self.pruned_channel.pop(m_old)
+                        if m_old in self.kept_wg.keys():
+                            self.kept_wg[m_new] = self.kept_wg[m_old]
+                            self.pruned_wg[m_new] = self.pruned_wg[m_old]
+                            self.kept_wg.pop(m_old)
+                            self.pruned_wg.pop(m_old)
                     self.model = self.original_model # reload the original model
                     self._prune_and_build_new_model()
                     return copy.deepcopy(self.model)

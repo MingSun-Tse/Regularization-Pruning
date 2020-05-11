@@ -302,7 +302,7 @@ def main_worker(gpu, ngpus_per_node, args):
         runner.args = args
         if args.method == "L1":
             Pruner = l1_pruner.L1Pruner
-        elif args.method == "IncReg":
+        elif args.method.endswith("Reg"):
             Pruner = increg_pruner.IncRegPruner
         pruner = Pruner(model, args, logger, runner)
         model = pruner.prune()
