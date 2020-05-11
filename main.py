@@ -280,8 +280,9 @@ def main_worker(gpu, ngpus_per_node, args):
         num_workers=args.workers, pin_memory=True)
 
     if args.evaluate:
-        validate(val_loader, model, criterion, args)
+        acc1, acc5 = validate(val_loader, model, criterion, args)
         # return # --- prune: remove this to test before training
+        print("Acc1 = {:.4f} Acc5 = {:.4f}".format(acc1, acc5))
 
     # --- prune
     # Structured pruning is basically equivalent to providing a new weight initialization before finetuning,
@@ -317,8 +318,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
         t1 = time.time()
         acc1, acc5 = validate(val_loader, model, criterion, args)
-        print("==> After pruning, acc1 = %.4f, acc5 = %.4f (time = %.2fs)" % (acc1, acc5, time.time()-t1))
-        print("==> Begin to finetune")
+        print("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just finished pruning, about to finetune" % 
+            (acc1, acc5, time.time()-t1))
 
         # since model is updated, update the optimizer
         optimizer = torch.optim.SGD(model.parameters(), args.lr,
@@ -355,6 +356,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # evaluate on validation set
         acc1, acc5 = validate(val_loader, model, criterion, args) # --- prune: added acc5
+        print("Acc1 = %.4f Acc5 = %.4f Epoch = %d (after update) [prune_state = finetune]" % 
+            (acc1, acc5, epoch))
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
@@ -469,8 +472,9 @@ def validate(val_loader, model, criterion, args):
                 progress.display(i)
 
         # TODO: this should also be done with the ProgressMeter
-        print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
-              .format(top1=top1, top5=top5))
+        # print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+        #       .format(top1=top1, top5=top5))
+        # --- prune: commented because we will use another print outside 'validate'
 
     return top1.avg, top5.avg # --- prune: added returning top5 acc
 

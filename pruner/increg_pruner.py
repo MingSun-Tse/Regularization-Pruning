@@ -136,7 +136,8 @@ class IncRegPruner(Pruner):
                         if self.args.wg == "channel":
                             self.reg[m][:, pruned] += self.args.weight_decay
                         elif self.args.wg == "filter":
-                            self.reg[m][pruned, :] += self.args.weight_decay
+                            # self.reg[m][pruned, :] += self.args.weight_decay
+                            self.reg[m] += self.args.weight_decay
 
                     mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned)
                     mag_ratio_now_before = w_abs[kept].mean() / self.original_w_mag[m]
@@ -301,11 +302,12 @@ class IncRegPruner(Pruner):
                 # Test
                 if total_iter % self.args.test_interval == 0:
                     acc1, acc5 = self.test(self.model)
-                    self.print("Acc1 = %.4f, Acc5 = %.4f. Total_iter = %d (before update)" % (acc1, acc5, total_iter))
+                    self.print("Acc1 = %.4f Acc5 = %.4f Iter = %d (before update) [prune_state = %s]" % 
+                        (acc1, acc5, total_iter, self.prune_state))
                     
                 if total_iter % self.args.print_interval == 0:
                     self.print("")
-                    self.print("Total iter = %d" % total_iter + " [prune_state = '%s'] " % self.prune_state + "-"*40)
+                    self.print("Iter = %d" % total_iter + " [prune_state = %s] " % self.prune_state + "-"*40)
                     
                 # forward
                 y_ = self.model(inputs)
