@@ -219,7 +219,10 @@ class IncRegPruner(Pruner):
                     # plot w_abs distribution
                     if self.total_iter % self.args.plot_interval == 0:
                         fig, ax = plt.subplots()
-                        ax.plot(w_abs.sort()[0].data.cpu().numpy())
+                        sorted_w_abs = w_abs.sort()[0].data.cpu().numpy()
+                        sorted_w_abs /= sorted_w_abs[-1] # normalize
+                        ax.plot(sorted_w_abs)
+                        ax.set_ylim([0, 1])
                         out = pjoin(self.logger.logplt_path, "%d_iter%d_w_abs_dist.jpg" % 
                                                 (cnt_m, self.total_iter))
                         fig.savefig(out)
