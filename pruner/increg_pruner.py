@@ -227,7 +227,7 @@ class IncRegPruner(Pruner):
 
                     # print to check magnitude ratio
                     if self.total_iter % self.args.print_interval == 0:
-                        pruned_wg = self._pick_pruned_wg(w_abs, pr) # current pruned chl
+                        pruned_wg = self._pick_pruned_wg(w_abs, pr)
                         kept_wg = [i for i in range(n_wg) if i not in pruned_wg]
                         mag_ratio, hist_mag_ratio = self._get_mag_ratio(m, pruned_wg)
                         self.mag_ratio_now_before = w_abs[kept_wg].mean() / self.original_w_mag[m]
@@ -244,6 +244,8 @@ class IncRegPruner(Pruner):
                     if m not in self.iter_pick_pruned_finished.keys() and \
                             (self.hist_mag_ratio[m] > self.args.mag_ratio_limit or self.reg[m].max() > 0.2):
                         self.iter_pick_pruned_finished[m] = self.total_iter
+                        pruned_wg = self._pick_pruned_wg(w_abs, pr)
+                        kept_wg = [i for i in range(n_wg) if i not in pruned_wg]
                         self.kept_wg[m] = kept_wg
                         self.pruned_wg[m] = pruned_wg
                         picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[m]]
