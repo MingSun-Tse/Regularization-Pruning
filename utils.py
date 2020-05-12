@@ -54,12 +54,13 @@ def get_n_flops(model=None, input_res=224, multiply_adds=True):
         output_channels, output_height, output_width = output[0].size()
 
         kernel_ops = self.kernel_size[0] * self.kernel_size[1] * (self.in_channels / self.groups)
-        bias_ops = 1 if self.bias is not None else 0
+        bias_ops = 0 if self.bias is not None else 0
 
-        params = output_channels * (kernel_ops + bias_ops)
+        # params = output_channels * (kernel_ops + bias_ops) # @mst: commented since not used
         # flops = (kernel_ops * (2 if multiply_adds else 1) + bias_ops) * output_channels * output_height * output_width * batch_size
 
-        num_weight_params = (self.weight.data != 0).float().sum()
+        num_weight_params = (self.weight.data != 0).float().sum() # @mst: this should be considering the pruned model
+        # could be problematic if some weights happen to be 0.
         flops = (num_weight_params * (2 if multiply_adds else 1) + bias_ops * output_channels) * output_height * output_width * batch_size
 
         list_conv.append(flops)
@@ -69,7 +70,7 @@ def get_n_flops(model=None, input_res=224, multiply_adds=True):
         batch_size = input[0].size(0) if input[0].dim() == 2 else 1
 
         weight_ops = self.weight.nelement() * (2 if multiply_adds else 1)
-        bias_ops = self.bias.nelement()
+        bias_ops = 0 self.bias.nelement()
 
         flops = batch_size * (weight_ops + bias_ops)
         list_linear.append(flops)
@@ -130,7 +131,7 @@ def get_n_flops(model=None, input_res=224, multiply_adds=True):
     out = model(input)
 
 
-    total_flops = (sum(list_conv) + sum(list_linear) + sum(list_bn) + sum(list_relu) + sum(list_pooling) + sum(list_upsample))
+    total_flops = (sum(list_conv) + sum(list_linear)) # + sum(list_bn) + sum(list_relu) + sum(list_pooling) + sum(list_upsample))
     total_flops /= 1e9
     # print('  Number of FLOPs: %.2fG' % total_flops)
 
