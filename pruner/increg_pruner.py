@@ -159,7 +159,7 @@ class IncRegPruner(Pruner):
                             (self.original_w_mag[m].item(), w_abs[kept].mean().item(), mag_ratio_now_before.item()))
                         
                     # determine if it is time to finish 'update_reg'
-                    finish_condition = self.reg[m].max() >= self.args.reg_upper_limit
+                    finish_condition = self.reg[m].max() >= self.args.reg_upper_limit and hist_mag_ratio > 1000
 
                 elif self.args.method == "AdaReg":
                     if m in self.iter_pick_pruned_finished.keys():
