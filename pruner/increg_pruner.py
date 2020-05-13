@@ -424,7 +424,7 @@ class IncRegPruner(Pruner):
                     return copy.deepcopy(self.model)
                 
                 if self.args.AdaReg_only_picking and self.all_layer_finish_picking:
-                    self.print("AdaReg finishes picking pruned channels. Model pruned. Go to 'finetune'")
+                    self.print("AdaReg finishes picking pruned weight groups. Model pruned. Go to 'finetune'")
                     
                     # update key
                     for m_old, m_new in zip(self.model.modules(), self.original_model.modules()):
