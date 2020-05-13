@@ -62,6 +62,10 @@ class IncRegPruner(Pruner):
             w = w.flatten()
             return w.sort()[1][:math.ceil(pr * w.size(0))]
         elif pr == -1: # automatically decide lr by each layer itself
+            tmp = w.flatten().sort()[0]
+            n_not_consider = int(len(tmp) * 0.02)
+            w = tmp[n_not_consider:-n_not_consider]
+
             sorted_w, sorted_index = w.flatten().sort()
             max_gap = 0
             max_index = 0
@@ -71,6 +75,7 @@ class IncRegPruner(Pruner):
                 if gap > max_gap:
                     max_gap = gap
                     max_index = i
+            max_index += n_not_consider
             return sorted_index[:max_index + 1]
         else:
             self.print("Wrong pr. Please check.")
