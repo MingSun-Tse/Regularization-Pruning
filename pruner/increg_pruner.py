@@ -250,7 +250,7 @@ class IncRegPruner(Pruner):
 
                     # check if picking finishes
                     if m not in self.iter_pick_pruned_finished.keys() and \
-                            (self.original_w_mag[name] > self.args.mag_ratio_limit or self.reg[name].max() > self.args.reg_upper_limit):
+                            (self.hist_mag_ratio[name] > self.args.mag_ratio_limit or self.reg[name].max() > self.args.reg_upper_limit):
                         self.iter_pick_pruned_finished[m] = self.total_iter
                         pruned_wg = self._pick_pruned_wg(w_abs, pr)
                         kept_wg = [i for i in range(n_wg) if i not in pruned_wg]
@@ -268,8 +268,26 @@ class IncRegPruner(Pruner):
                                 if mm not in self.iter_pick_pruned_finished.keys():
                                     self.all_layer_finish_picking = False
                                     break
+                 
+                    if self.args.AdaReg_only_picking and self.all_layer_finish_picking:
+                        self.print("AdaReg just finished picking pruned weight groups for all layers. Iter = %d" % self.total_iter)
+                        # update key
+                        for m_old, m_new in zip(self.model.modules(), self.original_model.modules()):
+                            if m_old in self.kept_wg.keys():
+                                self.kept_wg[m_new] = self.kept_wg[m_old]
+                                self.pruned_wg[m_new] = self.pruned_wg[m_old]
+                                self.kept_wg.pop(m_old)
+                                self.pruned_wg.pop(m_old)
+                        self.model = self.original_model # reload the original model
+                        self.args.method = "IncReg"
+                        self.args.AdaReg_only_picking = False # do not get in again
+                        # reinit
+                        for k in self.reg:
+                            self.reg[k] = torch.zeros_like(self.reg[k]).cuda()
+                        self.hist_mag_ratio = {}
+                        return
                     
-                    finish_condition = self.original_w_mag[name] > 1000 and self.mag_ratio_now_before > 0.95
+                    finish_condition = self.hist_mag_ratio[name] > 1000 and self.mag_ratio_now_before > 0.95
 
                 elif self.args.method == "OptReg":
                     delta_reg = self._get_delta_reg(m)
@@ -422,23 +440,6 @@ class IncRegPruner(Pruner):
                     self._prune_and_build_new_model() 
                     self.print("Prune is done, go to next state 'finetune'")
                     return copy.deepcopy(self.model)
-                
-                if self.args.AdaReg_only_picking and self.all_layer_finish_picking:
-                    self.print("AdaReg just finishes picking pruned weight groups for all layers at Iter = %d" % total_iter)
-                    # update key
-                    for m_old, m_new in zip(self.model.modules(), self.original_model.modules()):
-                        if m_old in self.kept_wg.keys():
-                            self.kept_wg[m_new] = self.kept_wg[m_old]
-                            self.pruned_wg[m_new] = self.pruned_wg[m_old]
-                            self.kept_wg.pop(m_old)
-                            self.pruned_wg.pop(m_old)
-                    self.model = self.original_model # reload the original model
-                    self.args.method = "IncReg"
-                    self.args.AdaReg_only_picking = False # do not get in again
-                    # reinit
-                    for k in self.reg:
-                        self.reg[k] = torch.zeros_like(self.reg[k]).cuda()
-                    self.hist_mag_ratio = {}
                 
                 if total_iter % self.args.print_interval == 0:
                     t2 = time.time()
