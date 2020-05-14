@@ -98,13 +98,13 @@ class IncRegPruner(Pruner):
         if len(pruned):
             mag_ratio = ave_mag_kept / ave_mag_pruned 
             if name in self.hist_mag_ratio.keys():
-                self.original_w_mag[name] = self.original_w_mag[name]* 0.9 + mag_ratio * 0.1
+                self.hist_mag_ratio[name] = self.hist_mag_ratio[name]* 0.9 + mag_ratio * 0.1
             else:
-                self.original_w_mag[name] = mag_ratio
+                self.hist_mag_ratio[name] = mag_ratio
         else:
-            mag_ratio = 123456789
-            self.original_w_mag[name] = 123456789
-        return mag_ratio, self.original_w_mag[name]
+            mag_ratio = math.inf
+            self.hist_mag_ratio[name] = math.inf
+        return mag_ratio, self.hist_mag_ratio[name]
 
     def _update_reg(self):
         for name, m in self.model.named_modules():
@@ -116,8 +116,8 @@ class IncRegPruner(Pruner):
                     continue
 
                 if self.total_iter % self.args.print_interval == 0:
-                    self.print("[%d] Update reg (method = %s) for layer '%s'. Iter = %d" 
-                        % (cnt_m, self.args.method, name, self.total_iter))
+                    self.print("[%d] Update reg for layer '%s'. Iter = %d. Method = %s" 
+                        % (cnt_m, name, self.total_iter, self.args.method))
                     
                 N, C, H, W = m.weight.size()
                 if self.args.wg == "channel":

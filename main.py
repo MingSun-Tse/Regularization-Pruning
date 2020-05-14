@@ -119,15 +119,14 @@ parser.add_argument('--reg_upper_limit', type=float, default=1.)
 parser.add_argument('--mag_ratio_limit', type=float, default=10)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
 args = parser.parse_args()
-
-logger = Logger(args)
-print = logger.log_printer
 args.copy_bn_w = True
 args.copy_bn_b = True
 args.stage_pr = strlist_to_list(args.stage_pr, float)
 args.skip_layers = strlist_to_list(args.skip_layers, str)
 args.direct_ft_weights = check_path(args.direct_ft_weights)
-print(args.stage_pr)
+
+logger = Logger(args)
+print = logger.log_printer
 # ---
 
 best_acc1 = 0
