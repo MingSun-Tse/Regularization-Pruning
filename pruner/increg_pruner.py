@@ -248,7 +248,10 @@ class IncRegPruner(Pruner):
                         self.all_layer_finish_pick = False
                         break
         
-        finish_condition = self.hist_mag_ratio[name] > 1000 and self.mag_ratio_now_before > 0.95
+        if self.args.AdaReg_only_picking:
+            finish_condition = False
+        else:
+            finish_condition = self.hist_mag_ratio[name] > 1000
         return finish_condition
 
     def _update_reg(self):
