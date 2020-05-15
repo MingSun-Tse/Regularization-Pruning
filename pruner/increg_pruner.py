@@ -55,7 +55,6 @@ class IncRegPruner(Pruner):
                     for _ in range(n_wg):
                         self.ranking[name].append([])
 
-                
     def _pick_pruned_wg(self, w, pr):
         if pr == 0:
             return []
@@ -137,7 +136,7 @@ class IncRegPruner(Pruner):
         if self.args.wg == "channel":
             self.reg[name][:, pruned] += self.args.weight_decay
         elif self.args.wg == "filter":
-            self.reg[name][pruned, :] += self.args.weight_decay * 10
+            self.reg[name][pruned, :] += self.args.weight_decay
         
         # when all layers are pushed hard enough, stop
         finish_condition = True
