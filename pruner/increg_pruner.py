@@ -120,9 +120,9 @@ class IncRegPruner(Pruner):
         self._update_mag_ratio(m, name, self.w_abs[name])
 
         if self.args.wg == "channel":
-            self.reg[name][:, pruned] = 1e4 * self.args.weight_decay
+            self.reg[name][:, pruned] = 1e4 * self.args.weight_decay * self.args.reg_multiplier
         elif self.args.wg == "filter":
-            self.reg[name][pruned, :] = 1e4 * self.args.weight_decay
+            self.reg[name][pruned, :] = 1e4 * self.args.weight_decay * self.args.reg_multiplier
 
         finish_condition = self.total_iter > 10000
         return finish_condition
@@ -134,9 +134,9 @@ class IncRegPruner(Pruner):
         self._update_mag_ratio(m, name, self.w_abs[name])
         
         if self.args.wg == "channel":
-            self.reg[name][:, pruned] += self.args.weight_decay
+            self.reg[name][:, pruned] += self.args.weight_decay * self.args.reg_multiplier
         elif self.args.wg == "filter":
-            self.reg[name][pruned, :] += self.args.weight_decay
+            self.reg[name][pruned, :] += self.args.weight_decay * self.args.reg_multiplier
         
         # when all layers are pushed hard enough, stop
         finish_condition = True
@@ -167,7 +167,7 @@ class IncRegPruner(Pruner):
             elif self.args.wg == 'filter':
                 self.reg[name][self.kept_wg[m], :] = recover_reg
         else:
-            self.reg[name] += self.args.weight_decay
+            self.reg[name] += self.args.weight_decay * self.args.reg_multiplier
 
 #                         # check ranking volatility
 #                         current_ranking = w_abs.sort()[1] # ranking of different weight groups
@@ -320,8 +320,8 @@ class IncRegPruner(Pruner):
 
     def prune(self):
         self.model = self.model.train()
-        optimizer = optim.SGD(self.model.parameters(), 
-                                lr=self.args.lr_prune, 
+        self.optimizer = optim.SGD(self.model.parameters(), 
+                                lr=self.args.lr_pick if self.args.AdaReg_only_picking else self.args.lr_prune, 
                                 momentum=self.args.momentum,
                                 weight_decay=self.args.weight_decay)
         epoch = -1
@@ -363,12 +363,12 @@ class IncRegPruner(Pruner):
                     
                 # normal training forward
                 loss = self.criterion(y_, targets)
-                optimizer.zero_grad()
+                self.optimizer.zero_grad()
                 loss.backward()
                 
                 # after backward but before update, apply reg to the grad
                 self._apply_reg()
-                optimizer.step()
+                self.optimizer.step()
 
                 # log print
                 if total_iter % self.args.print_interval == 0:
@@ -421,7 +421,13 @@ class IncRegPruner(Pruner):
                             self.pruned_wg[m_new] = self.pruned_wg[m_old]
                             self.kept_wg.pop(m_old)
                             self.pruned_wg.pop(m_old)
+                    
+                    # set to IncReg method
                     self.model = self.original_model # reload the original model
+                    self.optimizer = optim.SGD(self.model.parameters(), 
+                                            lr=self.args.lr_prune, 
+                                            momentum=self.args.momentum,
+                                            weight_decay=self.args.weight_decay)
                     self.args.method = "IncReg"
                     self.args.AdaReg_only_picking = False # do not get in again
                     # reinit
