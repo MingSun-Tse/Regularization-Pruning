@@ -25,7 +25,7 @@ class IncRegPruner(Pruner):
         self.original_w_mag = {}
         self.ranking = {}
         self.pruned_wg_L1 = {}
-        self.all_layer_finish_picking = False
+        self.all_layer_finish_pick = False
         self.w_abs = {}
         if self.args.AdaReg_only_picking:
             self.original_model = copy.deepcopy(self.model)
@@ -85,7 +85,7 @@ class IncRegPruner(Pruner):
         return np.max(ranking[-10:]) - np.min(ranking[-10:])
     
     def _update_mag_ratio(self, m, name, w_abs, pruned=None):
-        if pruned == None:
+        if type(pruned) == type(None):
             pruned = self.pruned_wg[m]
         kept = [i for i in range(len(w_abs)) if i not in pruned]
         ave_mag_pruned = w_abs[pruned].mean()
@@ -209,9 +209,11 @@ class IncRegPruner(Pruner):
         if self.total_iter % self.args.plot_interval == 0:
             fig, ax = plt.subplots()
             sorted_w_abs = w_abs.sort()[0].data.cpu().numpy()
-            sorted_w_abs /= sorted_w_abs[-1] # normalize
+            max = sorted_w_abs[-1]
+            sorted_w_abs /= max # normalize
             ax.plot(sorted_w_abs)
             ax.set_ylim([0, 1])
+            ax.set_title("max = %s" % max)
             layer_index = self.layers[name].layer_index
             out = pjoin(self.logger.logplt_path, "%d_iter%d_w_abs_dist.jpg" % 
                                     (layer_index, self.total_iter))
@@ -219,13 +221,13 @@ class IncRegPruner(Pruner):
             plt.close(fig)
 
         # print to check magnitude ratio
-        if self.total_iter % self.args.print_interval == 0:
+        if self.total_iter % self.args.pick_pruned_interval == 0:
             pruned_wg = self._pick_pruned_wg(w_abs, pr)
-            self.print("    Pruned_wg (pr=%.4f): " % (len(pruned_wg) / n_wg))
+            # self.print("    Pruned_wg (pr=%.4f): " % (len(pruned_wg) / n_wg))
             self._update_mag_ratio(m, name, w_abs, pruned=pruned_wg)
             
         # check if picking finishes
-        finish_pick_cond = self.reg[name].max() > 0.2
+        finish_pick_cond = self.reg[name].max() >= self.args.reg_upper_limit_pick
         if name not in self.iter_finish_pick and finish_pick_cond:
             self.iter_finish_pick[name] = self.total_iter
             pruned_wg = self._pick_pruned_wg(w_abs, pr)
@@ -234,17 +236,19 @@ class IncRegPruner(Pruner):
             self.pruned_wg[m] = pruned_wg
             picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[m]]
             common_ratio = len(picked_wg_in_common) / len(pruned_wg) if len(pruned_wg) else -1
-            self.print("    ! Just finish picking the pruned. [%d]. Iter = %d" % (cnt_m, self.total_iter))
+            layer_index = self.layers[name].layer_index
+            self.print("    ! [%d] Just finished picking the pruned. Iter = %d" % (layer_index, self.total_iter))
             self.print("    %.2f weight groups chosen by L1 and AdaReg in common" % common_ratio)
 
             # check if all layer finishes picking
-            self.all_layer_finish_picking = True
+            self.all_layer_finish_pick = True
             for k in self.reg.keys():
-                if k not in self.iter_finish_pick.keys():
-                    self.all_layer_finish_picking = False
-                    break
+                if self._get_layer_pr(k) > 0:
+                    if k not in self.iter_finish_pick.keys():
+                        self.all_layer_finish_pick = False
+                        break
         
-        finish_condition = self.original_w_mag[name] > 1000 and self.mag_ratio_now_before > 0.95
+        finish_condition = self.hist_mag_ratio[name] > 1000 and self.mag_ratio_now_before > 0.95
         return finish_condition
 
     def _update_reg(self):
@@ -405,7 +409,7 @@ class IncRegPruner(Pruner):
                 #             plot_weights_heatmap(m.weight.mean(dim=[2, 3]), out_path1)
                 #             plot_weights_heatmap(self.reg[name], out_path2)
                 
-                if self.args.AdaReg_only_picking and self.all_layer_finish_picking:
+                if self.args.AdaReg_only_picking and self.all_layer_finish_pick:
                     self.print("AdaReg just finished picking pruned wg for all layers. Iter = %d" % total_iter)
                     # update key
                     for m_old, m_new in zip(self.model.modules(), self.original_model.modules()):
