@@ -21,7 +21,7 @@ class IncRegPruner(Pruner):
         self.hist_mag_ratio = {}
         self.n_update_reg = {}
         self.iter_update_reg_finished = {}
-        self.iter_pick_pruned_finished = {}
+        self.iter_finish_pick = {}
         self.original_w_mag = {}
         self.ranking = {}
         self.pruned_wg_L1 = {}
@@ -152,7 +152,7 @@ class IncRegPruner(Pruner):
             return True
         w_abs = self.w_abs[name]
         n_wg = len(w_abs)
-        if 0: # m in self.iter_pick_pruned_finished.keys(): # not use for now
+        if 0: # m in self.iter_finish_pick.keys(): # not use for now
             # for pruned weights, push them more 
             if self.args.wg == 'channel':
                 self.reg[name][:, self.pruned_wg[m]] += self.args.weight_decay * 10
@@ -226,9 +226,9 @@ class IncRegPruner(Pruner):
             self._update_mag_ratio(m, name, w_abs, pruned=pruned_wg)
             
         # check if picking finishes
-        if m not in self.iter_pick_pruned_finished.keys() and \
-                (self.original_w_mag[name] > self.args.mag_ratio_limit or self.reg[name].max() > self.args.reg_upper_limit):
-            self.iter_pick_pruned_finished[m] = self.total_iter
+        finish_pick_cond = self.reg[name].max() > 0.2
+        if name not in self.iter_finish_pick and finish_pick_cond:
+            self.iter_finish_pick[name] = self.total_iter
             pruned_wg = self._pick_pruned_wg(w_abs, pr)
             kept_wg = [i for i in range(n_wg) if i not in pruned_wg]
             self.kept_wg[m] = kept_wg
@@ -240,11 +240,10 @@ class IncRegPruner(Pruner):
 
             # check if all layer finishes picking
             self.all_layer_finish_picking = True
-            for mm in self.model.modules():
-                if isinstance(mm, nn.Conv2d):
-                    if mm not in self.iter_pick_pruned_finished.keys():
-                        self.all_layer_finish_picking = False
-                        break
+            for k in self.reg.keys():
+                if k not in self.iter_finish_pick.keys():
+                    self.all_layer_finish_picking = False
+                    break
         
         finish_condition = self.original_w_mag[name] > 1000 and self.mag_ratio_now_before > 0.95
         return finish_condition
