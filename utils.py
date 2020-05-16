@@ -144,14 +144,22 @@ class PresetLRScheduler(object):
     def __init__(self, decay_schedule):
         # decay_schedule is a dictionary
         # which is for specifying iteration -> lr
-        self.decay_schedule = decay_schedule
+        self.decay_schedule = decay_schedule # a dict, example: {0:0.001, 30:0.00001, 45:0.000001}
         print('Using a preset learning rate schedule:')
         pprint(decay_schedule)
 
-    def __call__(self, optimizer, iteration):
-        for param_group in optimizer.param_groups:
-            lr = self.decay_schedule.get(iteration, param_group['lr'])
-            param_group['lr'] = lr
+    def __call__(self, optimizer, epoch):
+        epochs = self.decay_schedule.keys()
+        assert(type(epochs[0]) == int)
+        epochs = sorted(epochs) # exaple: [0, 30, 45]
+        for i in range(len(epochs) - 1):
+            if epochs[i] <= epoch < epochs[i+1]:
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = self.decay_schedule[epochs[i]]
+        # for param_group in optimizer.param_groups:
+        #     current_lr = param_group['lr']
+        #     new_lr = self.decay_schedule.get(iteration, current_lr)
+        #     param_group['lr'] = new_lr
 
     @staticmethod
     def get_lr(optimizer):

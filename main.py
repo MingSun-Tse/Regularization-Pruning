@@ -115,7 +115,6 @@ parser.add_argument('--save_interval', type=int, default=2000, help="the interva
 parser.add_argument('--reg_multiplier', type=float, default=1, help="each time the reg increases by 'reg_multiplier * wd'")
 parser.add_argument('--copy_bn_w', action="store_true")
 parser.add_argument('--copy_bn_b', action="store_true")
-parser.add_argument('--direct_ft_weights', type=str, default=None, help="when directly finetune a pruned model, this provides the weights path")
 parser.add_argument('--resume_path', type=str, default=None, help="supposed to replace the original 'resume' feature")
 parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
@@ -306,16 +305,33 @@ def main_worker(gpu, ngpus_per_node, args):
             train_dataset, batch_size=args.batch_size_prune, shuffle=(train_sampler is None),
             num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
+        # get the original unpruned model statistics
         n_params_original = get_n_params(model)
         n_flops_original = get_n_flops(model, input_res=224)
 
-        if args.direct_ft_weights:
-            state = torch.load(args.direct_ft_weights)
-            model = state['model'].cuda()
-            model.load_state_dict(state['state_dict'])
-            print("==> Load pretrained pruned model successfully: '{}'".format(args.direct_ft_weights))
-            # TODO: This demands the gpu number is the same as previous experiment. Get over it.
-        else:
+        # if args.direct_ft_weights:
+        #     state = torch.load(args.direct_ft_weights)
+        #     model = state['model'].cuda()
+        #     model.load_state_dict(state['state_dict'])
+        #     print("==> Load pretrained pruned model successfully: '{}'".format(args.direct_ft_weights))
+        #     # TODO: This demands the gpu number is the same as previous experiment. Get over it.
+        
+        prune_state = ''
+        if args.resume_path:
+            state = torch.load(args.resume_path)
+            prune_state = state['prune_state'] # finetune or update_reg or stabilize_reg
+            if prune_state == 'finetune':
+                model = state['model'].cuda()
+                model.load_state_dict(state['state_dict'])
+                optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                            momentum=args.momentum,
+                                            weight_decay=args.weight_decay)
+                optimizer.load_state_dict(state['optimizer'])
+                args.start_epoch = state['epoch']
+                print("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
+                        args.resume_path, args.start_epoch, prune_state))
+        
+        if prune_state != 'finetune':
             class runner: pass
             runner.test = validate
             runner.test_loader = val_loader
@@ -328,8 +344,13 @@ def main_worker(gpu, ngpus_per_node, args):
             elif args.method.endswith("Reg"):
                 Pruner = increg_pruner.IncRegPruner
             pruner = Pruner(model, args, logger, runner)
-            model = pruner.prune()
+            model = pruner.prune() # pruned model
+            # since model is new, we need a new optimizer
+            optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                        momentum=args.momentum,
+                                        weight_decay=args.weight_decay)
 
+        # get the statistics of pruned model
         n_params_now = get_n_params(model)
         n_flops_now = get_n_flops(model, input_res=224)
         print("==> n_params_original: %.4fM, n_flops_original: %.4fG" % (n_params_original, n_flops_original))
@@ -337,12 +358,10 @@ def main_worker(gpu, ngpus_per_node, args):
         ratio_param = (n_params_original - n_params_now) / n_params_original
         ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
         print("==> Reduction ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
-
         t1 = time.time()
         acc1, acc5 = validate(val_loader, model, criterion, args)
-        print("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just finished pruning, about to finetune" % 
+        print("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
             (acc1, acc5, time.time()-t1))
-
         state = {'arch': args.arch,
                  'model': model,
                  'state_dict': model.state_dict(),
@@ -351,11 +370,6 @@ def main_worker(gpu, ngpus_per_node, args):
                  'ExpID': logger.ExpID,
         }
         save_model(state, mark="just_finished_prune")
-
-        # since model is new, we need a new optimizer
-        optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                    momentum=args.momentum,
-                                    weight_decay=args.weight_decay)
 
         # lr finetune schduler
         lr_s = args.lr_ft
@@ -397,29 +411,28 @@ def main_worker(gpu, ngpus_per_node, args):
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
-            # save_checkpoint({
-            #     'epoch': epoch + 1,
-            #     'arch': args.arch,
-            #     'state_dict': model.state_dict(),
-            #     'best_acc1': best_acc1,
-            #     'optimizer' : optimizer.state_dict(),
-            # }, is_best)
-
-            # --- prune: use our own save func
-            state = {'epoch': epoch + 1,
-                     'arch': args.arch,
-                     'model': model,
-                     'state_dict': model.state_dict(),
-                     'acc1': acc1,
-                     'acc5': acc5,
-                     'optimizer': optimizer.state_dict(),
-                     'ExpID': logger.ExpID,
-            }
-            save_model(state, is_best, mark='finetune')
-            # ---
+            if args.method:
+                # --- prune: use our own save func
+                state = {'epoch': epoch + 1,
+                        'arch': args.arch,
+                        'model': model,
+                        'state_dict': model.state_dict(),
+                        'acc1': acc1,
+                        'acc5': acc5,
+                        'optimizer': optimizer.state_dict(),
+                        'ExpID': logger.ExpID,
+                        'prune_state': 'finetune',
+                }
+                save_model(state, is_best, mark='finetune')
+            else:
+                save_checkpoint({
+                    'epoch': epoch + 1,
+                    'arch': args.arch,
+                    'state_dict': model.state_dict(),
+                    'best_acc1': best_acc1,
+                    'optimizer' : optimizer.state_dict(),
+                }, is_best)
             
-
-
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
