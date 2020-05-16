@@ -116,6 +116,7 @@ parser.add_argument('--reg_multiplier', type=float, default=1, help="each time t
 parser.add_argument('--copy_bn_w', action="store_true")
 parser.add_argument('--copy_bn_b', action="store_true")
 parser.add_argument('--resume_path', type=str, default=None, help="supposed to replace the original 'resume' feature")
+parser.add_argument('--directly_ft_weights', type=str, default=None, help="directly finetune a pretrained model")
 parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
 parser.add_argument('--reg_upper_limit', type=float, default=1.)
@@ -129,6 +130,7 @@ args.copy_bn_b = True
 args.stage_pr = strlist_to_list(args.stage_pr, float)
 args.skip_layers = strlist_to_list(args.skip_layers, str)
 args.resume_path = check_path(args.resume_path)
+args.directly_ft_weights = check_path(args.directly_ft_weights)
 
 logger = Logger(args)
 print = logger.log_printer
@@ -330,6 +332,17 @@ def main_worker(gpu, ngpus_per_node, args):
                 print("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
                         args.resume_path, args.start_epoch, prune_state))
         
+        if args.directly_ft_weights:
+            state = torch.load(args.directly_ft_weights)
+            model = state['model'].cuda()
+            model.load_state_dict(state['state_dict'])
+            optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                        momentum=args.momentum,
+                                        weight_decay=args.weight_decay)
+            prune_state = 'finetune'
+            print("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
+                    args.resume_path, args.start_epoch, prune_state))
+
         if prune_state != 'finetune':
             class runner: pass
             runner.test = validate
