@@ -341,7 +341,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                         weight_decay=args.weight_decay)
             prune_state = 'finetune'
             print("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
-                    args.resume_path, args.start_epoch, prune_state))
+                    args.directly_ft_weights, args.start_epoch, prune_state))
 
         if prune_state != 'finetune':
             class runner: pass
