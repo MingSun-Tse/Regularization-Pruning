@@ -30,11 +30,9 @@ import copy
 from pruner import l1_pruner
 from pruner import increg_pruner
 from logger import Logger
-from data import Data
 from utils import get_n_params, get_n_flops, PresetLRScheduler
 from utils import strlist_to_list, check_path
 pjoin = os.path.join
-from model.resnet import ResNet18, ResNet34, ResNet50, ResNet101
 # ---
 
 model_names = sorted(name for name in models.__dict__
@@ -103,9 +101,6 @@ parser.add_argument('--test_interval', type=int, default=2000)
 
 # prune related
 parser.add_argument('--method', type=str, default="")
-parser.add_argument('--data_path', type=str, default="./data")
-parser.add_argument('--dataset', type=str, default="")
-parser.add_argument('--net', type=str, default="")
 parser.add_argument('--wg', type=str, default="filter", help='weight_group', choices=['filter', 'channel', 'weight'])
 parser.add_argument('--lr_pick', type=float, default=1e-3)
 parser.add_argument('--lr_prune', type=float, default=1e-3)
@@ -128,8 +123,6 @@ parser.add_argument('--reg_upper_limit_pick', type=float, default=0.25)
 parser.add_argument('--mag_ratio_limit', type=float, default=10)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
 parser.add_argument('--pick_pruned_interval', type=int, default=1, help="the interval to pick pruned in AdaReg")
-parser.add_argument('--img_size', type=int, default=32)
-parser.add_argument('--n_class', type=int, default=10)
 args = parser.parse_args()
 args.copy_bn_w = True
 args.copy_bn_b = True
@@ -197,13 +190,12 @@ def main_worker(gpu, ngpus_per_node, args):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
     # create model
-    # if args.pretrained:
-    #     print("=> using pre-trained model '{}'".format(args.arch))
-    #     model = models.__dict__[args.arch](pretrained=True)
-    # else:
-    #     print("=> creating model '{}'".format(args.arch))
-    #     model = models.__dict__[args.arch]()
-    model = ResNet50(args.n_class, args.img_size)
+    if args.pretrained:
+        print("=> using pre-trained model '{}'".format(args.arch))
+        model = models.__dict__[args.arch](pretrained=True)
+    else:
+        print("=> creating model '{}'".format(args.arch))
+        model = models.__dict__[args.arch]()
 
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -266,9 +258,38 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code
-    loader = Data(args)
-    train_loader = loader.train_loader
-    val_loader = loader.test_loader
+    traindir = os.path.join(args.data, 'train')
+    valdir = os.path.join(args.data, 'val3') if args.debug else os.path.join(args.data, 'val') # --- prune
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+
+    train_dataset = datasets.ImageFolder(
+        traindir,
+        transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ]))
+
+    if args.distributed:
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    else:
+        train_sampler = None
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+        num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+
+    val_loader = torch.utils.data.DataLoader(
+        datasets.ImageFolder(valdir, transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            normalize,
+        ])),
+        batch_size=args.batch_size, shuffle=False,
+        num_workers=args.workers, pin_memory=True)
 
     if args.evaluate:
         acc1, acc5 = validate(val_loader, model, criterion, args)
@@ -279,9 +300,13 @@ def main_worker(gpu, ngpus_per_node, args):
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
     # so just before training, do pruning to obtain a new model.
     if args.method:
+        train_loader_prune = torch.utils.data.DataLoader(
+            train_dataset, batch_size=args.batch_size_prune, shuffle=(train_sampler is None),
+            num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+
         # get the original unpruned model statistics
         n_params_original = get_n_params(model)
-        n_flops_original = get_n_flops(model, input_res=args.img_size)
+        n_flops_original = get_n_flops(model, input_res=224)
 
         # if args.direct_ft_weights:
         #     state = torch.load(args.direct_ft_weights)
@@ -309,7 +334,7 @@ def main_worker(gpu, ngpus_per_node, args):
             class runner: pass
             runner.test = validate
             runner.test_loader = val_loader
-            runner.train_loader = train_loader
+            runner.train_loader = train_loader_prune
             runner.criterion = criterion
             runner.args = args
             runner.save = save_model
@@ -319,7 +344,6 @@ def main_worker(gpu, ngpus_per_node, args):
                 Pruner = increg_pruner.IncRegPruner
             pruner = Pruner(model, args, logger, runner)
             model = pruner.prune() # pruned model
-            print(model)
             # since model is new, we need a new optimizer
             optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                         momentum=args.momentum,
@@ -327,7 +351,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # get the statistics of pruned model
         n_params_now = get_n_params(model)
-        n_flops_now = get_n_flops(model, input_res=args.img_size)
+        n_flops_now = get_n_flops(model, input_res=224)
         print("==> n_params_original: %.4fM, n_flops_original: %.4fG" % (n_params_original, n_flops_original))
         print("==> n_params_now:      %.4fM, n_flops_now:      %.4fG" % (n_params_now, n_flops_now))
         ratio_param = (n_params_original - n_params_now) / n_params_original
