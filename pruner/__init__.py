@@ -50,17 +50,19 @@ class Pruner:
         self.layer_kernel_size = OrderedDict()
         if args.arch.startswith('resnet'):
             self._register_layers()
+            # TODO: add block
+            self.n_conv_within_block = 0
+            if args.dataset == "imagenet":
+                if args.arch in ['resnet18', 'resnet34']:
+                    self.n_conv_within_block = 2
+                elif args.arch in ['resnet50', 'resnet101', 'resnet152']:
+                    self.n_conv_within_block = 3
+            else:
+                self.n_conv_within_block = 2
 
         self.kept_wg = {}
         self.pruned_wg = {} 
         
-        # TODO: add block
-        self.n_conv_within_block = 0
-        if args.arch in ['resnet18', 'resnet34']:
-            self.n_conv_within_block = 2
-        elif args.arch in ['resnet50', 'resnet101', 'resnet152']:
-            self.n_conv_within_block = 3
-
     def _pick_pruned(self, w_abs, pr, mode="min"):
         if pr == 0:
             return []

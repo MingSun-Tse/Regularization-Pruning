@@ -34,7 +34,7 @@ from data import Data
 from utils import get_n_params, get_n_flops, PresetLRScheduler
 from utils import strlist_to_list, check_path
 pjoin = os.path.join
-from model.resnet import ResNet18, ResNet34, ResNet50, ResNet101
+import model.resnet_cifar10 as resnet_cifar10
 # ---
 
 model_names = sorted(name for name in models.__dict__
@@ -45,7 +45,7 @@ parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
-                    choices=model_names,
+                    # choices=model_names, # --- prune
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
@@ -105,7 +105,6 @@ parser.add_argument('--test_interval', type=int, default=2000)
 parser.add_argument('--method', type=str, default="")
 parser.add_argument('--data_path', type=str, default="./data")
 parser.add_argument('--dataset', type=str, default="")
-parser.add_argument('--net', type=str, default="")
 parser.add_argument('--wg', type=str, default="filter", help='weight_group', choices=['filter', 'channel', 'weight'])
 parser.add_argument('--lr_pick', type=float, default=1e-3)
 parser.add_argument('--lr_prune', type=float, default=1e-3)
@@ -203,7 +202,9 @@ def main_worker(gpu, ngpus_per_node, args):
     # else:
     #     print("=> creating model '{}'".format(args.arch))
     #     model = models.__dict__[args.arch]()
-    model = ResNet50(args.n_class, args.img_size)
+    # --- prune
+    if args.dataset in ['cifar10']:
+        model = eval("resnet_cifar10.%s" % args.arch)()
 
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -233,7 +234,12 @@ def main_worker(gpu, ngpus_per_node, args):
             model.cuda()
         else:
             model = torch.nn.DataParallel(model).cuda()
-
+    # --- prune
+    if args.dataset in ['cifar10']:
+        pretrained_path = check_path('model/%s*.th' % args.arch)
+        model.load_state_dict(torch.load(pretrained_path)['state_dict'])
+        print("==> Load pretrained model successfully: '%s'" % pretrained_path)
+    
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
 
@@ -338,7 +344,7 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
             (acc1, acc5, time.time()-t1))
         state = {'arch': args.arch,
-                 'model': model,
+                 # 'model': model,
                  'state_dict': model.state_dict(),
                  'acc1': acc1,
                  'acc5': acc5,
@@ -390,7 +396,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 # --- prune: use our own save func
                 state = {'epoch': epoch + 1,
                         'arch': args.arch,
-                        'model': model,
+                        # 'model': model,
                         'state_dict': model.state_dict(),
                         'acc1': acc1,
                         'acc5': acc5,
