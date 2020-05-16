@@ -317,6 +317,31 @@ class IncRegPruner(Pruner):
                 reg = reg.unsqueeze(2).unsqueeze(3) # [N, C, 1, 1]
                 l2_grad = reg * m.weight
                 m.weight.grad += l2_grad
+    
+    def _resume_prune_status(self, ckpt_path):
+        state = torch.load(ckpt_path)
+        model = state['model'].cuda()
+        model.load_state_dict(state['state_dict'])
+        self.prune_state = state['prune_state']
+        self.total_iter = state['iter']
+        self.optimizer.load_state_dict(state['optimizer'])
+        self.reg = state['reg']
+        self.hist_mag_ratio = state['hist_mag_ratio']
+
+    def _save_model(self, acc1=0, acc5=0):
+        state = {'iter': self.total_iter,
+                'prune_state': self.prune_state, # we will resume prune_state
+                'arch': self.args.arch,
+                'model': self.model,
+                'state_dict': self.model.state_dict(),
+                'acc1': acc1,
+                'acc5': acc5,
+                'optimizer': self.optimizer.state_dict(),
+                'reg': self.reg,
+                'hist_mag_ratio': self.hist_mag_ratio,
+                'ExpID': self.logger.ExpID,
+        }
+        self.save(state, is_best=False, mark=self.prune_state)
 
     def prune(self):
         self.model = self.model.train()
@@ -324,20 +349,32 @@ class IncRegPruner(Pruner):
                                 lr=self.args.lr_pick if self.args.AdaReg_only_picking else self.args.lr_prune, 
                                 momentum=self.args.momentum,
                                 weight_decay=self.args.weight_decay)
-        epoch = -1
+        
+        # resume model, optimzer, prune_status
+        self.total_iter = -1
+        if self.args.resume_path:
+            self._resume_prune_status(self.args.resume_path)
+            self.print("Resume model successfully: '{}'. Iter = {}. prune_state = {}".format(
+                        self.args.resume_path, self.total_iter, self.prune_state))
+
         t1 = time.time()
+        acc1 = acc5 = 0
         while True:
-            epoch += 1
-            for batch_idx, (inputs, targets) in enumerate(self.train_loader):
+            for _, (inputs, targets) in enumerate(self.train_loader):
                 inputs, targets = inputs.cuda(), targets.cuda()
-                total_iter = epoch * len(self.train_loader) + batch_idx
-                self.total_iter = total_iter
+                self.total_iter += 1
+                total_iter = self.total_iter
                 
                 # test
                 if total_iter % self.args.test_interval == 0:
                     acc1, acc5 = self.test(self.model)
                     self.print("Acc1 = %.4f Acc5 = %.4f Iter = %d (before update) [prune_state = %s]" % 
                         (acc1, acc5, total_iter, self.prune_state))
+                
+                # save model (save model before a batch starts)
+                if total_iter % self.args.save_interval == 0:
+                    self._save_model(acc1, acc5)
+                    self.print('Periodically save model done. Iter = {}'.format(total_iter))
                     
                 if total_iter % self.args.print_interval == 0:
                     self.print("")
@@ -447,3 +484,5 @@ class IncRegPruner(Pruner):
                     total_time = t2 - t1
                     self.print("speed = %.2f iter/s" % (self.args.print_interval / total_time))
                     t1 = t2
+                
+                

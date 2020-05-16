@@ -111,10 +111,12 @@ parser.add_argument('--batch_size_prune', type=int, default=64, help="batch size
 parser.add_argument('--update_reg_interval', type=int, default=1)
 parser.add_argument('--stabilize_reg_interval', type=int, default=20000)
 parser.add_argument('--plot_interval', type=int, default=100)
+parser.add_argument('--save_interval', type=int, default=2000, help="the interval to save model")
 parser.add_argument('--reg_multiplier', type=float, default=1, help="each time the reg increases by 'reg_multiplier * wd'")
 parser.add_argument('--copy_bn_w', action="store_true")
 parser.add_argument('--copy_bn_b', action="store_true")
 parser.add_argument('--direct_ft_weights', type=str, default=None, help="when directly finetune a pruned model, this provides the weights path")
+parser.add_argument('--resume_path', type=str, default=None, help="supposed to replace the original 'resume' feature")
 parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
 parser.add_argument('--reg_upper_limit', type=float, default=1.)
@@ -128,6 +130,7 @@ args.copy_bn_b = True
 args.stage_pr = strlist_to_list(args.stage_pr, float)
 args.skip_layers = strlist_to_list(args.skip_layers, str)
 args.direct_ft_weights = check_path(args.direct_ft_weights)
+args.resume_path = check_path(args.resume_path)
 
 logger = Logger(args)
 print = logger.log_printer
@@ -347,7 +350,7 @@ def main_worker(gpu, ngpus_per_node, args):
                  'acc5': acc5,
                  'ExpID': logger.ExpID,
         }
-        save_model(state, mark="just_finish_prune")
+        save_model(state, mark="just_finished_prune")
 
         # since model is new, we need a new optimizer
         optimizer = torch.optim.SGD(model.parameters(), args.lr,
@@ -412,7 +415,7 @@ def main_worker(gpu, ngpus_per_node, args):
                      'optimizer': optimizer.state_dict(),
                      'ExpID': logger.ExpID,
             }
-            save_model(state, is_best)
+            save_model(state, is_best, mark='finetune')
             # ---
             
 
