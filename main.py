@@ -128,7 +128,6 @@ args.copy_bn_w = True
 args.copy_bn_b = True
 args.stage_pr = strlist_to_list(args.stage_pr, float)
 args.skip_layers = strlist_to_list(args.skip_layers, str)
-args.direct_ft_weights = check_path(args.direct_ft_weights)
 args.resume_path = check_path(args.resume_path)
 
 logger = Logger(args)

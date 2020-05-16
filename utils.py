@@ -149,7 +149,7 @@ class PresetLRScheduler(object):
         pprint(decay_schedule)
 
     def __call__(self, optimizer, epoch):
-        epochs = self.decay_schedule.keys()
+        epochs = list(self.decay_schedule.keys())
         assert(type(epochs[0]) == int)
         epochs = sorted(epochs) # exaple: [0, 30, 45]
         for i in range(len(epochs) - 1):
