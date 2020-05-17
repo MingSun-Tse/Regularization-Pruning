@@ -344,7 +344,7 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
             (acc1, acc5, time.time()-t1))
         state = {'arch': args.arch,
-                 # 'model': model,
+                 'model': model,
                  'state_dict': model.state_dict(),
                  'acc1': acc1,
                  'acc5': acc5,
@@ -396,7 +396,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 # --- prune: use our own save func
                 state = {'epoch': epoch + 1,
                         'arch': args.arch,
-                        # 'model': model,
+                        'model': model,
                         'state_dict': model.state_dict(),
                         'acc1': acc1,
                         'acc5': acc5,
