@@ -27,11 +27,13 @@ import torchvision.models as models
 
 # --- prune
 import copy
+from data import Data
 from pruner import l1_pruner
 from pruner import increg_pruner
 from logger import Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
-from utils import strlist_to_list, check_path
+from utils import strlist_to_list, check_path, parse_prune_ratio_vgg
+import model.resnet_cifar10 as resnet_cifar10
 pjoin = os.path.join
 # ---
 
@@ -40,10 +42,10 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('data', metavar='DIR',
+parser.add_argument('--data', metavar='DIR', # --- prune: 'data' -> '--data'
                     help='path to dataset')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
-                    choices=model_names,
+                    # choices=model_names, # --- prune: We will use more than the imagenet models
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
@@ -101,6 +103,8 @@ parser.add_argument('--test_interval', type=int, default=2000)
 
 # prune related
 parser.add_argument('--method', type=str, default="")
+parser.add_argument('--data_path', type=str, default="./data")
+parser.add_argument('--dataset', type=str, default="imagenet", choices=['imagenet', 'cifar10', 'cifar100', 'tinyimagenet'])
 parser.add_argument('--wg', type=str, default="filter", help='weight_group', choices=['filter', 'channel', 'weight'])
 parser.add_argument('--lr_pick', type=float, default=1e-3)
 parser.add_argument('--lr_prune', type=float, default=1e-3)
@@ -116,7 +120,8 @@ parser.add_argument('--reg_multiplier', type=float, default=1, help="each time t
 parser.add_argument('--copy_bn_w', action="store_true")
 parser.add_argument('--copy_bn_b', action="store_true")
 parser.add_argument('--resume_path', type=str, default=None, help="supposed to replace the original 'resume' feature")
-parser.add_argument('--directly_ft_weights', type=str, default=None, help="directly finetune a pretrained model")
+parser.add_argument('--directly_ft_weights', type=str, default=None, help="the path to a pretrained model")
+parser.add_argument('--base_model_path', type=str, default=None, help="the path to the unpruned base model")
 parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
 parser.add_argument('--reg_upper_limit', type=float, default=1.)
@@ -127,11 +132,24 @@ parser.add_argument('--pick_pruned_interval', type=int, default=1, help="the int
 args = parser.parse_args()
 args.copy_bn_w = True
 args.copy_bn_b = True
-args.stage_pr = strlist_to_list(args.stage_pr, float)
-args.skip_layers = strlist_to_list(args.skip_layers, str)
+# parse for layer-wise prune ratio
+# stage_pr is a list of float, skip_layers is a list of strings
+if args.arch.startswith('resnet'):
+    args.stage_pr = strlist_to_list(args.stage_pr, float) # example: [0, 0.4, 0.5, 0]
+    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [2.3.1, 3.1]
+elif args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
+    args.stage_pr = parse_prune_ratio_vgg(args.stage_pr) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
+    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
 args.resume_path = check_path(args.resume_path)
 args.directly_ft_weights = check_path(args.directly_ft_weights)
-
+args.base_model_path = check_path(args.base_model_path)
+args.data = pjoin(args.data_path, args.dataset)
+if args.dataset == 'imagenet':
+    img_size = 224
+elif args.dataset.startswith('cifar'):
+    img_size = 32
+elif args.dataset == 'tinyimagenet':
+    img_size = 64
 logger = Logger(args)
 print = logger.log_printer
 # ---
@@ -192,12 +210,17 @@ def main_worker(gpu, ngpus_per_node, args):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
     # create model
-    if args.pretrained:
-        print("=> using pre-trained model '{}'".format(args.arch))
-        model = models.__dict__[args.arch](pretrained=True)
+    if args.dataset == "imagenet":
+        if args.pretrained:
+            print("=> using pre-trained model '{}'".format(args.arch))
+            model = models.__dict__[args.arch](pretrained=True)
+        else:
+            print("=> creating model '{}'".format(args.arch))
+            model = models.__dict__[args.arch]()
+    elif args.dataset == "cifar10": # --- prune
+        model = eval("resnet_cifar10.%s" % args.arch)()
     else:
-        print("=> creating model '{}'".format(args.arch))
-        model = models.__dict__[args.arch]()
+        raise NotImplementedError
 
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -227,6 +250,12 @@ def main_worker(gpu, ngpus_per_node, args):
             model.cuda()
         else:
             model = torch.nn.DataParallel(model).cuda()
+
+    # --- prune
+    if args.dataset == 'cifar10':
+        pretrained_path = args.base_model_path
+        model.load_state_dict(torch.load(pretrained_path)['state_dict'])
+        print("==> Load pretrained model successfully: '%s'" % pretrained_path)
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
@@ -260,38 +289,43 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code
-    traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val3') if args.debug else os.path.join(args.data, 'val') # --- prune
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
+    if args.dataset != 'imagenet':
+        loader = Data(args)
+        train_loader = loader.train_loader
+        val_loader = loader.test_loader
+    else:   
+        traindir = os.path.join(args.data, 'train')
+        valdir = os.path.join(args.data, 'val3') if args.debug else os.path.join(args.data, 'val') # --- prune
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                        std=[0.229, 0.224, 0.225])
 
-    train_dataset = datasets.ImageFolder(
-        traindir,
-        transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ]))
+        train_dataset = datasets.ImageFolder(
+            traindir,
+            transforms.Compose([
+                transforms.RandomResizedCrop(224),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                normalize,
+            ]))
 
-    if args.distributed:
-        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-    else:
-        train_sampler = None
+        if args.distributed:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+        else:
+            train_sampler = None
 
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+            num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-    val_loader = torch.utils.data.DataLoader(
-        datasets.ImageFolder(valdir, transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            normalize,
-        ])),
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+        val_loader = torch.utils.data.DataLoader(
+            datasets.ImageFolder(valdir, transforms.Compose([
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                normalize,
+            ])),
+            batch_size=args.batch_size, shuffle=False,
+            num_workers=args.workers, pin_memory=True)
 
     if args.evaluate:
         acc1, acc5 = validate(val_loader, model, criterion, args)
@@ -302,13 +336,17 @@ def main_worker(gpu, ngpus_per_node, args):
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
     # so just before training, do pruning to obtain a new model.
     if args.method:
-        train_loader_prune = torch.utils.data.DataLoader(
-            train_dataset, batch_size=args.batch_size_prune, shuffle=(train_sampler is None),
-            num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+        if args.dataset == 'imagenet':
+            # imagenet training costs too much time, so we use a smaller batch size for pruning training
+            train_loader_prune = torch.utils.data.DataLoader(
+                train_dataset, batch_size=args.batch_size_prune, shuffle=(train_sampler is None),
+                num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+        else:
+            train_loader_prune = train_loader
 
         # get the original unpruned model statistics
         n_params_original = get_n_params(model)
-        n_flops_original = get_n_flops(model, input_res=224)
+        n_flops_original = get_n_flops(model, input_res=img_size)
 
         # if args.direct_ft_weights:
         #     state = torch.load(args.direct_ft_weights)
@@ -364,7 +402,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # get the statistics of pruned model
         n_params_now = get_n_params(model)
-        n_flops_now = get_n_flops(model, input_res=224)
+        n_flops_now = get_n_flops(model, input_res=img_size)
         print("==> n_params_original: %.4fM, n_flops_original: %.4fG" % (n_params_original, n_flops_original))
         print("==> n_params_now:      %.4fM, n_flops_now:      %.4fG" % (n_params_now, n_flops_now))
         ratio_param = (n_params_original - n_params_now) / n_params_original

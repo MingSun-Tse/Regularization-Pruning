@@ -7,13 +7,13 @@ from math import ceil
 from collections import OrderedDict
 
 class Layer:
-    def __init__(self, name, size, layer_index):
+    def __init__(self, name, size, layer_index, res=False):
         self.name = name
         self.size = size # 4-d kernel size
         self.layer_index = layer_index
         self.is_shortcut = True if "downsample" in name else False
-        self.stage, self.seq_index, self.block_index = self._get_various_index(name)
-        # TODO: add fm size
+        if res:
+            self.stage, self.seq_index, self.block_index = self._get_various_index(name)
     
     def _get_various_index(self, name):
         '''
@@ -47,20 +47,29 @@ class Pruner:
         self.criterion = runner.criterion
         self.save = runner.save
         
-        self.layer_kernel_size = OrderedDict()
-        if args.arch.startswith('resnet'):
-            self._register_layers()
+        self.layers = OrderedDict()
+        self._register_layers()
+
+        arch = self.args.arch
+        if arch.startswith('resnet'):
+            # TODO: add block
+            self.n_conv_within_block = 0
+            if args.dataset == "imagenet":
+                if arch in ['resnet18', 'resnet34']:
+                    self.n_conv_within_block = 2
+                elif arch in ['resnet50', 'resnet101', 'resnet152']:
+                    self.n_conv_within_block = 3
+            else:
+                self.n_conv_within_block = 2
+            self._get_layer_pr = self._get_layer_pr_resnet
+        elif arch.startswith("alexnet") or arch.startswith("vgg"):
+            self._get_layer_pr = self._get_layer_pr_vgg
+        else:
+            raise NotImplementedError
 
         self.kept_wg = {}
         self.pruned_wg = {} 
         
-        # TODO: add block
-        self.n_conv_within_block = 0
-        if args.arch in ['resnet18', 'resnet34']:
-            self.n_conv_within_block = 2
-        elif args.arch in ['resnet50', 'resnet101', 'resnet152']:
-            self.n_conv_within_block = 3
-
     def _pick_pruned(self, w_abs, pr, mode="min"):
         if pr == 0:
             return []
@@ -75,31 +84,33 @@ class Pruner:
 
     def _register_layers(self):
         '''
-            This will maintain a data structure that will return some useful information via the name of a layer.
+            This will maintain a data structure that will return some useful 
+            information via the name of a layer.
         '''
-        self.layers = OrderedDict()
         ix = -1 # layer index
-        max_len = 0
+        max_len_name = 0
+        layer_shape = {}
         for name, m in self.model.named_modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 if "downsample" not in name:
                     ix += 1
-                ks = m.kernel_size
-                self.layer_kernel_size[name] = [ix, ks]
-                max_len = max(max_len, len(name))
+                layer_shape[name] = [ix, m.weight.size()]
+                max_len_name = max(max_len_name, len(name))
                 
                 size = m.weight.size()
-                self.layers[name] = Layer(name, size, ix)
-
-        print("Registering conv layer index and kernel size:")
-        format_str = "[%3d] %{}s -- kernel_size: %s".format(max_len)
-        for name, (ix, ks) in self.layer_kernel_size.items():
+                res = True if self.args.arch.startswith('resnet') else False
+                self.layers[name] = Layer(name, size, ix, res)
+        max_len_ix = len("%s" % ix)
+        print("Registering conv layer index and kernel shape:")
+        format_str = "[%{}d] %{}s -- kernel_shape: %s".format(max_len_ix, max_len_name)
+        for name, (ix, ks) in layer_shape.items():
             print(format_str % (ix, name, ks))
 
     def _next_conv(self, model, name, mm):
-        block_index = self.layers[name].block_index
-        if block_index == self.n_conv_within_block - 1:
-            return None
+        if hasattr(self.layers[name], 'block_index'):
+            block_index = self.layers[name].block_index
+            if block_index == self.n_conv_within_block - 1:
+                return None
         ix_conv = 0
         ix_mm = -1
         for m in model.modules():
@@ -112,9 +123,10 @@ class Pruner:
         return None
     
     def _prev_conv(self, model, name, mm):
-        block_index = self.layers[name].block_index
-        if block_index in [None, 0, -1]: # 1st conv, 1st conv in a block, 1x1 shortcut layer
-            return None
+        if hasattr(self.layers[name], 'block_index'):
+            block_index = self.layers[name].block_index
+            if block_index in [None, 0, -1]: # 1st conv, 1st conv in a block, 1x1 shortcut layer
+                return None
         for n, m in model.named_modules():
             if n in self.layers:
                 ix = self.layers[n].layer_index
@@ -162,28 +174,18 @@ class Pruner:
                 if not self.layers[name].is_shortcut:
                     n_filter.append(m.weight.size(0))
         return n_filter
-
-    def _get_kept_wg_L1_vgg(self):
-        '''
-            Not considered dependence among layers. TODO: consider dependence.
-        '''
-        conv_cnt = 0
-        for m in self.model.modules():
-            if isinstance(m, nn.Conv2d): # for now, we focus on conv layers
-                conv_cnt += 1
-                C = m.weight.size(1)
-                if conv_cnt in [1]:
-                    self.pruned_channel[m] = []
-                else:
-                    if isinstance(prune_ratios, dict):
-                        pr = prune_ratios[m]
-                    else:
-                        pr = prune_ratios
-                    w_abs = m.weight.abs().mean(dim=[0, 2, 3])
-                    self.pruned_channel[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
-                self.kept_channel[m] = [i for i in range(C) if i not in self.pruned_channel[m]]
     
-    def _get_layer_pr(self, name):
+    def _get_layer_pr_vgg(self, name):
+        '''Example: '[0-4:0.5, 5:0.6, 8-10:0.2]'
+                    6, 7 not mentioned, default value is 0
+        '''
+        layer_index = self.layers[name].layer_index
+        pr = self.args.stage_pr[layer_index]
+        if str(layer_index) in self.args.skip_layers:
+            pr = 0
+        return pr
+
+    def _get_layer_pr_resnet(self, name):
         '''
             This function will determine the prune_ratio (pr) for each specific layer
             by a set of rules.
@@ -212,11 +214,11 @@ class Pruner:
         
         return pr
 
-    def _get_kept_wg_L1_resnet(self):
+    def _get_kept_wg_L1(self):
         wg = self.args.wg
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
-                N, C, H, W = m.weight.size()
+                N, C, _, _ = m.weight.size()
                 if wg == "filter":
                     w_abs = m.weight.abs().mean(dim=[1, 2, 3])
                     n_wg = N
@@ -226,18 +228,10 @@ class Pruner:
                 elif wg == "weight":
                     w_abs = m.weight.abs()
                     n_wg = m.weight.numel()
-                
                 pr = self._get_layer_pr(name)
                 self.pruned_wg[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
                 self.kept_wg[m] = [i for i in range(n_wg) if i not in self.pruned_wg[m]]
     
-    def _get_kept_wg_L1(self):
-        arch = self.args.arch
-        if arch.startswith("resnet"):
-            self._get_kept_wg_L1_resnet()
-        elif arch.startswith("alexnet") or arch.startswith("vgg"):
-            self._get_kept_wg_L1_vgg()
-
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":
             kept_chl = self.kept_wg[m]
@@ -259,6 +253,7 @@ class Pruner:
 
     def _prune_and_build_new_model(self):
         new_model = copy.deepcopy(self.model)
+        cnt_linear = 0
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
                 kept_filter, kept_chl = self._get_kept_filter_channel(m, name)
@@ -298,8 +293,38 @@ class Pruner:
                 
                 # load the new bn
                 self._replace_module(new_model, name, new_bn)
+            
+            elif isinstance(m, nn.Linear):
+                cnt_linear += 1
+                if cnt_linear == 1:
+                    # get the last conv
+                    last_conv = ''
+                    last_conv_name = ''
+                    for n, mm in self.model.named_modules():
+                        if isinstance(mm, nn.Conv2d):
+                            last_conv = mm
+                            last_conv_name = n
+                    kept_filter_last_conv, _ = self._get_kept_filter_channel(last_conv, last_conv_name)
+                    
+                    # get kept weights
+                    dim_in = m.weight.size(1)
+                    fm_size = int(dim_in / last_conv.weight.size(0)) # 36 for alexnet
+                    kept_dim_in = []
+                    for i in kept_filter_last_conv:
+                        tmp = list(range(i * fm_size, i * fm_size + fm_size))
+                        kept_dim_in += tmp
+                    kept_weights = m.weight.data[:, kept_dim_in]
+                    
+                    # build the new linear layer
+                    bias = False if isinstance(m.bias, type(None)) else True
+                    new_linear = nn.Linear(in_features=len(kept_dim_in), out_features=m.out_features, bias=bias).cuda()
+                    new_linear.weight.data.copy_(kept_weights)
+                    if bias:
+                        new_linear.bias.data.copy_(m.bias.data)
+                    
+                    # load the new linear
+                    self._replace_module(new_model, name, new_linear)
         
         self.model = new_model
-        # print(new_model)
         n_filter = self._get_n_filter(self.model)
         print(n_filter)

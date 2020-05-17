@@ -258,13 +258,14 @@ class IncRegPruner(Pruner):
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
                 cnt_m = self.layers[name].layer_index
+                pr = self._get_layer_pr(name)
                 
                 if m in self.iter_update_reg_finished.keys():
                     continue
 
                 if self.total_iter % self.args.print_interval == 0:
-                    self.print("[%d] Update reg for layer '%s'. Iter = %d. Method = %s" 
-                        % (cnt_m, name, self.total_iter, self.args.method))
+                    self.print("[%d] Update reg for layer '%s'. Pr = %s. Iter = %d" 
+                        % (cnt_m, name, pr, self.total_iter))
                 
                 # get the importance score (L1-norm in this case)
                 self.w_abs[name] = self._get_score(m)
@@ -378,7 +379,8 @@ class IncRegPruner(Pruner):
                     
                 if total_iter % self.args.print_interval == 0:
                     self.print("")
-                    self.print("Iter = %d" % total_iter + " [prune_state = %s] " % self.prune_state + "-"*40)
+                    self.print("Iter = %d [prune_state = %s, method = %s] " 
+                        % (total_iter, self.prune_state, self.args.method) + "-"*40)
                     
                 # forward
                 y_ = self.model(inputs)

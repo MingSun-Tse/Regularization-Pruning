@@ -209,5 +209,18 @@ def check_path(x):
         x = complete_path[0]
     return x
 
-
+def parse_prune_ratio_vgg(sstr):
+    # example: [0-4:0.5, 5:0.6, 8-10:0.2]
+    out = np.zeros(20) # at most 20 layers, could be problematic but enough for vgg-like cases
+    sstr = sstr.split("[")[1].split("]")[0]
+    for x in sstr.split(','):
+        k = x.split(":")[0].strip()
+        v = x.split(":")[1].strip()
+        if k.isdigit():
+            out[int(k)] = float(v)
+        else:
+            begin = int(k.split('-')[0].strip())
+            end = int(k.split('-')[1].strip())
+            out[begin : end+1] = float(v)
+    return out
 
