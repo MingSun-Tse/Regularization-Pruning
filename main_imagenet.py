@@ -32,7 +32,7 @@ from pruner import l1_pruner
 from pruner import increg_pruner
 from logger import Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
-from utils import strlist_to_list, check_path
+from utils import strlist_to_list, check_path, parse_prune_ratio_vgg
 import model.resnet_cifar10 as resnet_cifar10
 pjoin = os.path.join
 # ---
@@ -132,8 +132,14 @@ parser.add_argument('--pick_pruned_interval', type=int, default=1, help="the int
 args = parser.parse_args()
 args.copy_bn_w = True
 args.copy_bn_b = True
-args.stage_pr = strlist_to_list(args.stage_pr, float)
-args.skip_layers = strlist_to_list(args.skip_layers, str)
+# parse for layer-wise prune ratio
+# stage_pr is a list of float, skip_layers is a list of strings
+if args.arch.startswith('resnet'):
+    args.stage_pr = strlist_to_list(args.stage_pr, float) # example: [0, 0.4, 0.5, 0]
+    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [2.3.1, 3.1]
+elif args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
+    args.stage_pr = parse_prune_ratio_vgg(args.stage_pr) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
+    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
 args.resume_path = check_path(args.resume_path)
 args.directly_ft_weights = check_path(args.directly_ft_weights)
 args.base_model_path = check_path(args.base_model_path)
