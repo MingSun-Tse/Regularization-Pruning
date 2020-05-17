@@ -48,7 +48,6 @@ class Pruner:
         self.save = runner.save
         
         self.layers = OrderedDict()
-        self.layer_kernel_size = OrderedDict()
         self._register_layers()
 
         arch = self.args.arch
@@ -89,28 +88,29 @@ class Pruner:
             information via the name of a layer.
         '''
         ix = -1 # layer index
-        max_len = 0
+        max_len_name = 0
+        layer_shape = {}
         for name, m in self.model.named_modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 if "downsample" not in name:
                     ix += 1
-                ks = m.kernel_size
-                self.layer_kernel_size[name] = [ix, ks]
-                max_len = max(max_len, len(name))
+                layer_shape[name] = [ix, m.weight.size()]
+                max_len_name = max(max_len_name, len(name))
                 
                 size = m.weight.size()
                 res = True if self.args.arch.startswith('resnet') else False
                 self.layers[name] = Layer(name, size, ix, res)
-
-        print("Registering conv layer index and kernel size:")
-        format_str = "[%3d] %{}s -- kernel_size: %s".format(max_len)
-        for name, (ix, ks) in self.layer_kernel_size.items():
+        max_len_ix = len("%s" % ix)
+        print("Registering conv layer index and kernel shape:")
+        format_str = "[%{}d] %{}s -- kernel_shape: %s".format(max_len_ix, max_len_name)
+        for name, (ix, ks) in layer_shape.items():
             print(format_str % (ix, name, ks))
 
     def _next_conv(self, model, name, mm):
-        block_index = self.layers[name].block_index
-        if block_index == self.n_conv_within_block - 1:
-            return None
+        if hasattr(self.layers[name], 'block_index'):
+            block_index = self.layers[name].block_index
+            if block_index == self.n_conv_within_block - 1:
+                return None
         ix_conv = 0
         ix_mm = -1
         for m in model.modules():
@@ -123,9 +123,10 @@ class Pruner:
         return None
     
     def _prev_conv(self, model, name, mm):
-        block_index = self.layers[name].block_index
-        if block_index in [None, 0, -1]: # 1st conv, 1st conv in a block, 1x1 shortcut layer
-            return None
+        if hasattr(self.layers[name], 'block_index'):
+            block_index = self.layers[name].block_index
+            if block_index in [None, 0, -1]: # 1st conv, 1st conv in a block, 1x1 shortcut layer
+                return None
         for n, m in model.named_modules():
             if n in self.layers:
                 ix = self.layers[n].layer_index
@@ -252,6 +253,7 @@ class Pruner:
 
     def _prune_and_build_new_model(self):
         new_model = copy.deepcopy(self.model)
+        cnt_linear = 0
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
                 kept_filter, kept_chl = self._get_kept_filter_channel(m, name)
@@ -291,6 +293,37 @@ class Pruner:
                 
                 # load the new bn
                 self._replace_module(new_model, name, new_bn)
+            
+            elif isinstance(m, nn.Linear):
+                cnt_linear += 1
+                if cnt_linear == 1:
+                    # get the last conv
+                    last_conv = ''
+                    last_conv_name = ''
+                    for n, mm in self.model.named_modules():
+                        if isinstance(mm, nn.Conv2d):
+                            last_conv = mm
+                            last_conv_name = n
+                    kept_filter_last_conv, _ = self._get_kept_filter_channel(last_conv, last_conv_name)
+                    
+                    # get kept weights
+                    dim_in = m.weight.size(1)
+                    fm_size = int(dim_in / last_conv.weight.size(0)) # 36 for alexnet
+                    kept_dim_in = []
+                    for i in kept_filter_last_conv:
+                        tmp = list(range(i * fm_size, i * fm_size + fm_size))
+                        kept_dim_in += tmp
+                    kept_weights = m.weight.data[:, kept_dim_in]
+                    
+                    # build the new linear layer
+                    bias = False if isinstance(m.bias, type(None)) else True
+                    new_linear = nn.Linear(in_features=len(kept_dim_in), out_features=m.out_features, bias=bias).cuda()
+                    new_linear.weight.data.copy_(kept_weights)
+                    if bias:
+                        new_linear.bias.data.copy_(m.bias.data)
+                    
+                    # load the new linear
+                    self._replace_module(new_model, name, new_linear)
         
         self.model = new_model
         n_filter = self._get_n_filter(self.model)
