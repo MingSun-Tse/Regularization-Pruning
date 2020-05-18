@@ -24,6 +24,8 @@ class Layer:
 
         if "conv1" == name: # TODO: this might not be so safe
             return 0, None, None
+        if "linear" in name:
+            return None, None, None
         else:
             try:
                 stage  = int(name.split(".")[0][-1]) # Only work for standard resnets. name example: layer2.2.conv1, layer4.0.downsample.0
