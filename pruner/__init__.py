@@ -24,7 +24,7 @@ class Layer:
 
         if "conv1" == name: # TODO: this might not be so safe
             return 0, None, None
-        if "linear" in name:
+        if "linear" in name or 'fc' in name: # Note: this can be risky. Check it fully. TODO: @mingsun-tse
             return None, None, None
         else:
             try:
