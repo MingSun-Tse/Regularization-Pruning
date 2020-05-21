@@ -151,7 +151,7 @@ elif args.dataset.startswith('cifar'):
 elif args.dataset == 'tinyimagenet':
     img_size = 64
 logger = Logger(args)
-print = logger.log_printer
+logprint = logger.log_printer
 # ---
 
 best_acc1 = 0
@@ -198,7 +198,7 @@ def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
 
     if args.gpu is not None:
-        print("Use GPU: {} for training".format(args.gpu))
+        logprint("Use GPU: {} for training".format(args.gpu))
 
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
@@ -212,10 +212,10 @@ def main_worker(gpu, ngpus_per_node, args):
     # create model
     if args.dataset == "imagenet":
         if args.pretrained:
-            print("=> using pre-trained model '{}'".format(args.arch))
+            logprint("=> using pre-trained model '{}'".format(args.arch))
             model = models.__dict__[args.arch](pretrained=True)
         else:
-            print("=> creating model '{}'".format(args.arch))
+            logprint("=> creating model '{}'".format(args.arch))
             model = models.__dict__[args.arch]()
     elif args.dataset == "cifar10": # --- prune
         model = eval("resnet_cifar10.%s" % args.arch)()
@@ -255,7 +255,7 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.dataset == 'cifar10':
         pretrained_path = args.base_model_path
         model.load_state_dict(torch.load(pretrained_path)['state_dict'])
-        print("==> Load pretrained model successfully: '%s'" % pretrained_path)
+        logprint("==> Load pretrained model successfully: '%s'" % pretrained_path)
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
@@ -267,7 +267,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
-            print("=> loading checkpoint '{}'".format(args.resume))
+            logprint("=> loading checkpoint '{}'".format(args.resume))
             if args.gpu is None:
                 checkpoint = torch.load(args.resume)
             else:
@@ -281,10 +281,10 @@ def main_worker(gpu, ngpus_per_node, args):
                 best_acc1 = best_acc1.to(args.gpu)
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
-            print("=> loaded checkpoint '{}' (epoch {})"
+            logprint("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
         else:
-            print("=> no checkpoint found at '{}'".format(args.resume))
+            logprint("=> no checkpoint found at '{}'".format(args.resume))
 
     cudnn.benchmark = True
 
@@ -330,7 +330,7 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.evaluate:
         acc1, acc5 = validate(val_loader, model, criterion, args)
         # return # --- prune: remove this to test before training
-        print("Acc1 = {:.4f} Acc5 = {:.4f}".format(acc1, acc5))
+        logprint("Acc1 = {:.4f} Acc5 = {:.4f}".format(acc1, acc5))
 
     # --- prune
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
@@ -352,7 +352,7 @@ def main_worker(gpu, ngpus_per_node, args):
         #     state = torch.load(args.direct_ft_weights)
         #     model = state['model'].cuda()
         #     model.load_state_dict(state['state_dict'])
-        #     print("==> Load pretrained pruned model successfully: '{}'".format(args.direct_ft_weights))
+        #     logprint("==> Load pretrained pruned model successfully: '{}'".format(args.direct_ft_weights))
         #     # TODO: This demands the gpu number is the same as previous experiment. Get over it.
         
         prune_state = ''
@@ -367,7 +367,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                             weight_decay=args.weight_decay)
                 optimizer.load_state_dict(state['optimizer'])
                 args.start_epoch = state['epoch']
-                print("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
+                logprint("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
                         args.resume_path, args.start_epoch, prune_state))
         
         if args.directly_ft_weights:
@@ -378,7 +378,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                         momentum=args.momentum,
                                         weight_decay=args.weight_decay)
             prune_state = 'finetune'
-            print("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
+            logprint("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
                     args.directly_ft_weights, args.start_epoch, prune_state))
 
         if prune_state != 'finetune':
@@ -395,6 +395,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 Pruner = increg_pruner.IncRegPruner
             pruner = Pruner(model, args, logger, runner)
             model = pruner.prune() # pruned model
+
             # since model is new, we need a new optimizer
             optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                         momentum=args.momentum,
@@ -403,14 +404,14 @@ def main_worker(gpu, ngpus_per_node, args):
         # get the statistics of pruned model
         n_params_now = get_n_params(model)
         n_flops_now = get_n_flops(model, input_res=img_size)
-        print("==> n_params_original: %.4fM, n_flops_original: %.4fG" % (n_params_original, n_flops_original))
-        print("==> n_params_now:      %.4fM, n_flops_now:      %.4fG" % (n_params_now, n_flops_now))
+        logprint("==> n_params_original: %.4fM, n_flops_original: %.4fG" % (n_params_original, n_flops_original))
+        logprint("==> n_params_now:      %.4fM, n_flops_now:      %.4fG" % (n_params_now, n_flops_now))
         ratio_param = (n_params_original - n_params_now) / n_params_original
         ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
-        print("==> Reduction ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
+        logprint("==> Reduction ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
         t1 = time.time()
         acc1, acc5 = validate(val_loader, model, criterion, args)
-        print("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
+        logprint("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
             (acc1, acc5, time.time()-t1))
         state = {'arch': args.arch,
                  'model': model,
@@ -431,6 +432,11 @@ def main_worker(gpu, ngpus_per_node, args):
                 lr = float(x.split(":")[1].strip())
                 lr_schedule[epoch] = lr
         lr_scheduler = PresetLRScheduler(lr_schedule)
+        
+        # print pruned model arch to log file
+        print(model, file=logger.logtxt, flush=True)
+        if args.screen_print:
+            print(model)
     # ---
     
     for epoch in range(args.start_epoch, args.epochs):
@@ -441,7 +447,7 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.method:
             lr_scheduler(optimizer, epoch)
             lr = lr_scheduler.get_lr(optimizer)
-            print("==> Set lr = %s" % lr)
+            logprint("==> Set lr = %s" % lr)
         else:
             adjust_learning_rate(optimizer, epoch, args)
         # ---
@@ -456,7 +462,7 @@ def main_worker(gpu, ngpus_per_node, args):
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
 
-        print("Acc1 = %.4f Acc5 = %.4f Epoch = %d (after update) [prune_state = finetune] (best Acc1 = %.4f)" % 
+        logprint("Acc1 = %.4f Acc5 = %.4f Epoch = %d (after update) [prune_state = finetune] (best Acc1 = %.4f)" % 
             (acc1, acc5, epoch, best_acc1))
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
@@ -567,7 +573,7 @@ def validate(val_loader, model, criterion, args):
                 progress.display(i)
 
         # TODO: this should also be done with the ProgressMeter
-        # print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+        # logprint(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
         #       .format(top1=top1, top5=top5))
         # --- prune: commented because we will use another print outside 'validate'
 
@@ -623,7 +629,7 @@ class ProgressMeter(object):
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        print('\t'.join(entries))
+        logprint('\t'.join(entries))
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
@@ -637,7 +643,7 @@ def adjust_learning_rate(optimizer, epoch, args):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
     # --- prune
-    print("==> Set lr = %s" % lr)
+    logprint("==> Set lr = %s" % lr)
     # ---
 
 
