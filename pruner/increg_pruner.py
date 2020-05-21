@@ -211,7 +211,8 @@ class IncRegPruner(Pruner):
             sorted_w_abs = w_abs.sort()[0].data.cpu().numpy()
             max = sorted_w_abs[-1]
             sorted_w_abs /= max # normalize
-            ax.plot(sorted_w_abs)
+            w_abs /= max
+            ax.plot(w_abs.data.cpu().numpy())
             ax.set_ylim([0, 1])
             ax.set_title("max = %s" % max)
             layer_index = self.layers[name].layer_index
