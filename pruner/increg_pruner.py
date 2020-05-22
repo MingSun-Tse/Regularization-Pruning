@@ -208,18 +208,19 @@ class IncRegPruner(Pruner):
         # plot w_abs distribution
         if self.total_iter % self.args.plot_interval == 0:
             fig, ax = plt.subplots()
-            sorted_w_abs = w_abs.sort()[0].data.cpu().numpy()
-            max = sorted_w_abs[-1]
-            sorted_w_abs /= max # normalize
-            w_abs /= max
-            ax.plot(w_abs.data.cpu().numpy())
+            max_ = w_abs.max()[0]
+            w_abs_normalized = (w_abs / max_).data.cpu().numpy()
+            ax.plot(w_abs_normalized)
             ax.set_ylim([0, 1])
-            ax.set_title("max = %s" % max)
+            ax.set_xlabel('filter index')
+            ax.set_ylabel('relative L1-norm ratio')
             layer_index = self.layers[name].layer_index
+            ax.set_title("layer %d iter %d (max = %s)" % (layer_index, self.total_iter, max_))
             out = pjoin(self.logger.logplt_path, "%d_iter%d_w_abs_dist.jpg" % 
                                     (layer_index, self.total_iter))
             fig.savefig(out)
             plt.close(fig)
+            np.save(out.replace('.jpg', '.npy'), w_abs_normalized)
 
         # print to check magnitude ratio
         if self.total_iter % self.args.pick_pruned_interval == 0:
