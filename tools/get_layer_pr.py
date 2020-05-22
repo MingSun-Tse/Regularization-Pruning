@@ -1,28 +1,47 @@
 import numpy as np
 import os
 import sys
+import glob
 pjoin = os.path.join
 
 '''Usage
-    python  this_file.py   <w_abs log dir>   <step>   <thresh>
+    python  this_file.py   '<w_abs log dir>'  <thresh>  Note: the '' is necessary!
+    Example: py get_layer_pr.py '../Experiments/AdaRegPick*0522*/log/plot' 35000 0.1
 '''
-folder = sys.argv[1]
-step = sys.argv[2]
-thresh = float(sys.argv[3])
+folders = sys.argv[1]
+folders = glob.glob(folders)
+thresh = float(sys.argv[2])
 
-npys = [pjoin(folder, x) for x in os.listdir(folder) if x.endswith('.npy') and ('iter%s_' % step) in x]
-pr = {}
-for i in npys:
-    w_abs_ratio = np.load(i)
-    tmp = w_abs_ratio < thresh
-    layer = i.split('/')[-1].split('_')[0]
-    pr[layer] = sum(tmp) / len(w_abs_ratio)
+for f in folders:
+    pr = {}
+    for step in range(1000, 35000, 200):
+        npys = [pjoin(f, x) for x in os.listdir(f) if x.endswith('.npy') and ('iter%s_' % step) in x]
+        
+        for i in npys:
+            w_abs_ratio = np.load(i)
+            tmp = w_abs_ratio < thresh
+            layer = i.split('/')[-1].split('_')[0]
+            if layer in pr:
+                pr[layer][0] += sum(tmp) / len(w_abs_ratio)
+                pr[layer][1] += 1
+            else:
+                pr[layer] = [sum(tmp) / len(w_abs_ratio), 1]
+    
+    for k, v in pr.items():
+        pr[k] = v[0] / v[1]
 
-pr_str = '['
-for i in range(100):
-    if str(i) in pr:
-        pr_str += '%.2f, ' % (pr[str(i)])
-pr_str += ']'
-print(pr_str)
+    pr_str = '['
+    for i in range(100):
+        if str(i) in pr:
+            pr_str += '%.2f, ' % (pr[str(i)])
+    pr_str += ']'
+    print(pr_str)
+
+    pr_str = '{'
+    for i in range(100):
+        if str(i) in pr:
+            pr_str += '%s: %.2f, ' % (i, pr[str(i)])
+    pr_str += '}'
+    print(pr_str)
 
 
