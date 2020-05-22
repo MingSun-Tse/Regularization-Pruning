@@ -86,11 +86,10 @@ class IncRegPruner(Pruner):
     
     def _update_mag_ratio(self, m, name, w_abs, pruned=None):
         if type(pruned) == type(None):
-            pruned = self.pruned_wg[m]
+            pruned = self.pruned_wg[name]
         kept = [i for i in range(len(w_abs)) if i not in pruned]
         ave_mag_pruned = w_abs[pruned].mean()
         ave_mag_kept = w_abs[kept].mean()
-        print(ave_mag_pruned, ave_mag_kept)
         if len(pruned):
             mag_ratio = ave_mag_kept / ave_mag_pruned 
             if name in self.hist_mag_ratio:
@@ -117,7 +116,7 @@ class IncRegPruner(Pruner):
     def _fix_reg(self, m, name):
         if self._get_layer_pr(name) == 0:
             return True
-        pruned = self.pruned_wg[m]
+        pruned = self.pruned_wg[name]
         self._update_mag_ratio(m, name, self.w_abs[name])
 
         if self.args.wg == "channel":
@@ -131,7 +130,7 @@ class IncRegPruner(Pruner):
     def _inc_reg(self, m, name):
         if self._get_layer_pr(name) == 0:
             return True
-        pruned = self.pruned_wg[m]
+        pruned = self.pruned_wg[name]
         self._update_mag_ratio(m, name, self.w_abs[name])
         
         if self.args.wg == "channel":
@@ -155,18 +154,18 @@ class IncRegPruner(Pruner):
         if 0: # m in self.iter_finish_pick.keys(): # not use for now
             # for pruned weights, push them more 
             if self.args.wg == 'channel':
-                self.reg[name][:, self.pruned_wg[m]] += self.args.weight_decay * 10
+                self.reg[name][:, self.pruned_wg[name]] += self.args.weight_decay * 10
             elif self.args.wg == 'filter':
-                self.reg[name][self.pruned_wg[m], :] += self.args.weight_decay * 10
+                self.reg[name][self.pruned_wg[name], :] += self.args.weight_decay * 10
 
             # for kept weights, bring them back
-            current_w_mag = w_abs[self.kept_wg[m]].mean()
+            current_w_mag = w_abs[self.kept_wg[name]].mean()
             recover_reg = min((current_w_mag / self.original_w_mag[name] - 1) * self.args.weight_decay * 10, 
                     self.args.weight_decay)
             if self.args.wg == 'channel':
-                self.reg[name][:, self.kept_wg[m]] = recover_reg
+                self.reg[name][:, self.kept_wg[name]] = recover_reg
             elif self.args.wg == 'filter':
-                self.reg[name][self.kept_wg[m], :] = recover_reg
+                self.reg[name][self.kept_wg[name], :] = recover_reg
         else:
             self.reg[name] += self.args.weight_decay * self.args.reg_multiplier
 
@@ -177,15 +176,15 @@ class IncRegPruner(Pruner):
 #                         cnt_reward = 0
 #                         for i in range(n_wg):
 #                             chl = current_ranking[i]
-#                             self.ranking[m][chl].append(i)
-#                             volatility = self._get_volatility(self.ranking[m][chl])
+#                             self.ranking[name][chl].append(i)
+#                             volatility = self._get_volatility(self.ranking[name][chl])
 #                             logtmp += "%d " % volatility
 #                             v.append(volatility)
 
 # #                                 # Reg reward
 # #                                 # if chl is good now and quite stable, it signs that this chl probably will be kept finally,
 # #                                 # so reward it.
-# #                                 if len(self.ranking[m][chl]) > 10:
+# #                                 if len(self.ranking[name][chl]) > 10:
 # #                                     if i >= int(self.args.prune_ratio * C) and volatility <= 0.02 * C:
 # #                                         cnt_reward += 1
 # #                                         self.reg[name][:, chl] -= self.args.weight_decay * 4
@@ -235,9 +234,9 @@ class IncRegPruner(Pruner):
             self.iter_finish_pick[name] = self.total_iter
             pruned_wg = self._pick_pruned_wg(w_abs, pr)
             kept_wg = [i for i in range(n_wg) if i not in pruned_wg]
-            self.kept_wg[m] = kept_wg
-            self.pruned_wg[m] = pruned_wg
-            picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[m]]
+            self.kept_wg[name] = kept_wg
+            self.pruned_wg[name] = pruned_wg
+            picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[name]]
             common_ratio = len(picked_wg_in_common) / len(pruned_wg) if len(pruned_wg) else -1
             layer_index = self.layers[name].layer_index
             self.print("    ! [%d] Just finished picking the pruned. Iter = %d" % (layer_index, self.total_iter))
@@ -263,7 +262,7 @@ class IncRegPruner(Pruner):
                 cnt_m = self.layers[name].layer_index
                 pr = self._get_layer_pr(name)
                 
-                if m in self.iter_update_reg_finished.keys():
+                if name in self.iter_update_reg_finished.keys():
                     continue
 
                 if self.total_iter % self.args.print_interval == 0:
@@ -288,7 +287,7 @@ class IncRegPruner(Pruner):
                 # check prune state
                 if finish_condition:
                     # after 'update_reg' stage, keep the reg to stabilize weight magnitude
-                    self.iter_update_reg_finished[m] = self.total_iter
+                    self.iter_update_reg_finished[name] = self.total_iter
                     self.print("    ! [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
 
                     # check if all layers finish 'update_reg'
@@ -305,9 +304,9 @@ class IncRegPruner(Pruner):
                     # not used for now
                     # if self.args.method == "AdaReg":
                     #     if self.args.wg == 'channel':
-                    #         self.reg[name][:, self.kept_wg[m]] = 0 
+                    #         self.reg[name][:, self.kept_wg[name]] = 0 
                     #     elif self.args.wg == 'filter':
-                    #         self.reg[name][self.kept_wg[m], :] = 0
+                    #         self.reg[name][self.kept_wg[name], :] = 0
 
                 # after reg is updated, print to check
                 if self.total_iter % self.args.print_interval == 0:
@@ -361,6 +360,7 @@ class IncRegPruner(Pruner):
         self.total_iter = -1
         if self.args.resume_path:
             self._resume_prune_status(self.args.resume_path)
+            self._get_kept_wg_L1() # get pruned and kept wg from the resumed model
             self.model = self.model.train()
             self.print("Resume model successfully: '{}'. Iter = {}. prune_state = {}".format(
                         self.args.resume_path, self.total_iter, self.prune_state))
@@ -460,13 +460,6 @@ class IncRegPruner(Pruner):
                 
                 if self.args.AdaReg_only_picking and self.all_layer_finish_pick:
                     self.print("AdaReg just finished picking pruned wg for all layers. Iter = %d" % total_iter)
-                    # update key
-                    for m_old, m_new in zip(self.model.modules(), self.original_model.modules()):
-                        if m_old in self.kept_wg.keys():
-                            self.kept_wg[m_new] = self.kept_wg[m_old]
-                            self.pruned_wg[m_new] = self.pruned_wg[m_old]
-                            self.kept_wg.pop(m_old)
-                            self.pruned_wg.pop(m_old)
                     
                     # set to IncReg method
                     self.model = self.original_model # reload the original model

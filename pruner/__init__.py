@@ -231,12 +231,12 @@ class Pruner:
                     w_abs = m.weight.abs()
                     n_wg = m.weight.numel()
                 pr = self._get_layer_pr(name)
-                self.pruned_wg[m] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
-                self.kept_wg[m] = [i for i in range(n_wg) if i not in self.pruned_wg[m]]
+                self.pruned_wg[name] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
+                self.kept_wg[name] = [i for i in range(n_wg) if i not in self.pruned_wg[name]]
     
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":
-            kept_chl = self.kept_wg[m]
+            kept_chl = self.kept_wg[name]
             next_conv = self._next_conv(self.model, name, m)
             if not next_conv:
                 kept_filter = range(m.weight.size(0))
@@ -244,7 +244,7 @@ class Pruner:
                 kept_filter = self.kept_wg[next_conv]
         
         elif self.args.wg == "filter":
-            kept_filter = self.kept_wg[m]
+            kept_filter = self.kept_wg[name]
             prev_conv = self._prev_conv(self.model, name, m)
             if not prev_conv:
                 kept_chl = range(m.weight.size(1))
