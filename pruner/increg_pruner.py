@@ -318,7 +318,10 @@ class IncRegPruner(Pruner):
                 reg = self.reg[name] # [N, C]
                 reg = reg.unsqueeze(2).unsqueeze(3) # [N, C, 1, 1]
                 l2_grad = reg * m.weight
-                m.weight.grad += l2_grad
+                if self.args.block_loss_grad:
+                    m.weight.grad = l2_grad
+                else:
+                    m.weight.grad += l2_grad
     
     def _resume_prune_status(self, ckpt_path):
         state = torch.load(ckpt_path)
