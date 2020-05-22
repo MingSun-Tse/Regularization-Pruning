@@ -90,6 +90,7 @@ class IncRegPruner(Pruner):
         kept = [i for i in range(len(w_abs)) if i not in pruned]
         ave_mag_pruned = w_abs[pruned].mean()
         ave_mag_kept = w_abs[kept].mean()
+        print(ave_mag_pruned, ave_mag_kept)
         if len(pruned):
             mag_ratio = ave_mag_kept / ave_mag_pruned 
             if name in self.hist_mag_ratio:
@@ -326,8 +327,8 @@ class IncRegPruner(Pruner):
     
     def _resume_prune_status(self, ckpt_path):
         state = torch.load(ckpt_path)
-        model = state['model'].cuda()
-        model.load_state_dict(state['state_dict'])
+        self.model = state['model'].cuda()
+        self.model.load_state_dict(state['state_dict'])
         self.prune_state = state['prune_state']
         self.total_iter = state['iter']
         self.optimizer.load_state_dict(state['optimizer'])
@@ -360,6 +361,7 @@ class IncRegPruner(Pruner):
         self.total_iter = -1
         if self.args.resume_path:
             self._resume_prune_status(self.args.resume_path)
+            self.model = self.model.train()
             self.print("Resume model successfully: '{}'. Iter = {}. prune_state = {}".format(
                         self.args.resume_path, self.total_iter, self.prune_state))
 
