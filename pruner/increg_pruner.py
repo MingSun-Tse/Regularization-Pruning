@@ -208,7 +208,7 @@ class IncRegPruner(Pruner):
         # plot w_abs distribution
         if self.total_iter % self.args.plot_interval == 0:
             fig, ax = plt.subplots()
-            max_ = w_abs.max()[0]
+            max_ = w_abs.max().item()
             w_abs_normalized = (w_abs / max_).data.cpu().numpy()
             ax.plot(w_abs_normalized)
             ax.set_ylim([0, 1])
