@@ -253,7 +253,7 @@ def main_worker(gpu, ngpus_per_node, args):
             model = torch.nn.DataParallel(model).cuda()
 
     # --- prune
-    if args.dataset == 'cifar10':
+    if args.base_model_path:
         pretrained_path = args.base_model_path
         model.load_state_dict(torch.load(pretrained_path)['state_dict'])
         logprint("==> Load pretrained model successfully: '%s'" % pretrained_path)

@@ -115,13 +115,13 @@ class Pruner:
                 return None
         ix_conv = 0
         ix_mm = -1
-        for m in model.modules():
+        for n, m in model.named_modules():
             if isinstance(m, nn.Conv2d):
                 ix_conv += 1
                 if m == mm:
                     ix_mm = ix_conv
                 if ix_mm != -1 and ix_conv == ix_mm + 1:
-                    return m
+                    return n
         return None
     
     def _prev_conv(self, model, name, mm):
@@ -129,11 +129,11 @@ class Pruner:
             block_index = self.layers[name].block_index
             if block_index in [None, 0, -1]: # 1st conv, 1st conv in a block, 1x1 shortcut layer
                 return None
-        for n, m in model.named_modules():
+        for n, _ in model.named_modules():
             if n in self.layers:
                 ix = self.layers[n].layer_index
                 if ix + 1 == self.layers[name].layer_index:
-                    return m
+                    return n
         return None
 
     def _next_bn(self, model, mm):
