@@ -193,6 +193,7 @@ class Pruner:
             by a set of rules.
         '''
         wg = self.args.wg
+        layer_index = self.layers[name].layer_index
         stage = self.layers[name].stage
         seq_index = self.layers[name].seq_index
         block_index = self.layers[name].block_index
@@ -214,6 +215,13 @@ class Pruner:
             (wg == "filter" and block_index == self.n_conv_within_block - 1):
             pr = 0
         
+
+        # adjust 
+        pr_weight = \
+{"1": 0.04, "2": 0.04, "4": 0.03, "5": 0.02, "7": 0.03, "8": 0.02, "10": 0.03, "11": 0.02, "13": 0.04, "14": 0.03, "16": 0.03, "17": 0.03, "19": 0.03, "20": 0.02, "22": 0.04, "23": 0.02, "25": 0.04, "26": 0.03, "28": 0.04, "29": 0.02, "31": 0.04, "32": 0.02, "34": 0.04, "35": 0.02, "37": 0.04, "38": 0.02, "40": 0.04, "41": 0.02, "43": 0.04, "44": 0.03, "46": 0.04, "47": 0.04, }
+        if str(layer_index) in pr_weight:
+            pr = pr_weight[str(layer_index)] * pr
+
         return pr
 
     def _get_kept_wg_L1(self):
