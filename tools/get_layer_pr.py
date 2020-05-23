@@ -9,7 +9,9 @@ pjoin = os.path.join
 
 '''Usage
     python  this_file.py   '<w_abs log dir>'  <thresh>  Note: the '' is necessary!
-    Example: py get_layer_pr.py '../Experiments/AdaRegPick*0522*/log/plot' 35000 0.1
+    example:
+on 138 server:
+py get_layer_pr.py ../Experiments/AdaRegPick_resnet50_imagenet_pr0.680.5_bs128_SERVER138-20200522-002904/log/plot 0.1 1
 '''
 folders = sys.argv[1]
 folders = glob.glob(folders)
@@ -51,7 +53,7 @@ for f in folders:
     pr_str = '{'
     for i in range(100):
         if str(i) in pr:
-            pr_str += '"%s": %.2f, ' % (i, pr[str(i)])
+            pr_str += '%s: %.2f, ' % (i, pr[str(i)])
     pr_str += '}'
     print(pr_str)
 

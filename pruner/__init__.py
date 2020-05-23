@@ -5,6 +5,7 @@ import time
 import numpy as np
 from math import ceil
 from collections import OrderedDict
+from utils import strdict_to_dict
 
 class Layer:
     def __init__(self, name, size, layer_index, res=False):
@@ -217,12 +218,25 @@ class Pruner:
         
 
         # adjust
-        ''' 
-        pr_weight = \
-{"1": 0.04, "2": 0.04, "4": 0.03, "5": 0.02, "7": 0.03, "8": 0.02, "10": 0.03, "11": 0.02, "13": 0.04, "14": 0.03, "16": 0.03, "17": 0.03, "19": 0.03, "20": 0.02, "22": 0.04, "23": 0.02, "25": 0.04, "26": 0.03, "28": 0.04, "29": 0.02, "31": 0.04, "32": 0.02, "34": 0.04, "35": 0.02, "37": 0.04, "38": 0.02, "40": 0.04, "41": 0.02, "43": 0.04, "44": 0.03, "46": 0.04, "47": 0.04, }
-        if str(layer_index) in pr_weight:
-            pr = pr_weight[str(layer_index)] * pr
-        '''
+        if self.args.pr_ratio_file:
+            line = open(self.args.pr_ratio_file).readline()
+            pr_weight = strdict_to_dict(line, float)
+            if str(layer_index) in pr_weight:
+                pr = pr_weight[str(layer_index)] * pr
+            
+            # print final pr to check
+            # if not hasattr(self, '_final_pr'):
+            #     self._final_pr = {}
+            #     self._print_final_pr = False
+            # if str(layer_index) not in self._final_pr:
+            #     self._final_pr[str(layer_index)] = pr
+            # else:
+            #     if self._print_final_pr == False:
+            #         logtmp = ''
+            #         for k, v in self._final_pr.items():
+            #             logtmp += '%s:%.2f ' % (k, v)
+            #         self.print(logtmp)
+            #         self._print_final_pr = True
         return pr
 
     def _get_kept_wg_L1(self):

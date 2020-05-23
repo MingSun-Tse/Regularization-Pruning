@@ -130,6 +130,7 @@ parser.add_argument('--reg_upper_limit_pick', type=float, default=0.25)
 parser.add_argument('--mag_ratio_limit', type=float, default=10)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
 parser.add_argument('--pick_pruned_interval', type=int, default=1, help="the interval to pick pruned in AdaReg")
+parser.add_argument('--pr_ratio_file', type=str, default=None)
 args = parser.parse_args()
 args.copy_bn_w = True
 args.copy_bn_b = True
