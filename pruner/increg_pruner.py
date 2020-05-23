@@ -328,9 +328,13 @@ class IncRegPruner(Pruner):
         state = torch.load(ckpt_path)
         self.model = state['model'].cuda()
         self.model.load_state_dict(state['state_dict'])
+        self.optimizer = optim.SGD(self.model.parameters(), 
+                                lr=self.args.lr_pick if self.args.AdaReg_only_picking else self.args.lr_prune, 
+                                momentum=self.args.momentum,
+                                weight_decay=self.args.weight_decay)
+        self.optimizer.load_state_dict(state['optimizer'])
         self.prune_state = state['prune_state']
         self.total_iter = state['iter']
-        self.optimizer.load_state_dict(state['optimizer'])
         self.reg = state['reg']
         self.hist_mag_ratio = state['hist_mag_ratio']
 
