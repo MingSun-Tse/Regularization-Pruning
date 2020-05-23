@@ -480,7 +480,7 @@ def main_worker(gpu, ngpus_per_node, args):
                         'ExpID': logger.ExpID,
                         'prune_state': 'finetune',
                 }
-                save_model(state, is_best, mark='finetune')
+                save_model(state, is_best)
             else:
                 save_checkpoint({
                     'epoch': epoch + 1,

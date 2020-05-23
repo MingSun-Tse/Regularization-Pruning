@@ -22,6 +22,7 @@ class IncRegPruner(Pruner):
         self.n_update_reg = {}
         self.iter_update_reg_finished = {}
         self.iter_finish_pick = {}
+        self.iter_stabilize_reg = math.inf
         self.original_w_mag = {}
         self.ranking = {}
         self.pruned_wg_L1 = {}
@@ -300,6 +301,7 @@ class IncRegPruner(Pruner):
                     if self.prune_state == "stabilize_reg":
                         self.iter_stabilize_reg = self.total_iter
                         self.print("    ! All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
+                        self._save_model(mark='just_finished_update_reg')
                     
                     # not used for now
                     # if self.args.method == "AdaReg":
@@ -335,15 +337,17 @@ class IncRegPruner(Pruner):
         self.optimizer.load_state_dict(state['optimizer'])
         self.prune_state = state['prune_state']
         self.total_iter = state['iter']
+        self.iter_stabilize_reg = state.get('iter_stabilize_reg', math.inf)
         self.reg = state['reg']
         self.hist_mag_ratio = state['hist_mag_ratio']
 
-    def _save_model(self, acc1=0, acc5=0):
+    def _save_model(self, acc1=0, acc5=0, mark=''):
         state = {'iter': self.total_iter,
                 'prune_state': self.prune_state, # we will resume prune_state
                 'arch': self.args.arch,
                 'model': self.model,
                 'state_dict': self.model.state_dict(),
+                'iter_stabilize_reg': self.iter_stabilize_reg,
                 'acc1': acc1,
                 'acc5': acc5,
                 'optimizer': self.optimizer.state_dict(),
@@ -351,7 +355,7 @@ class IncRegPruner(Pruner):
                 'hist_mag_ratio': self.hist_mag_ratio,
                 'ExpID': self.logger.ExpID,
         }
-        self.save(state, is_best=False, mark=self.prune_state)
+        self.save(state, is_best=False, mark=mark)
 
     def prune(self):
         self.model = self.model.train()
