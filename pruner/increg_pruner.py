@@ -292,9 +292,9 @@ class IncRegPruner(Pruner):
 
                     # check if all layers finish 'update_reg'
                     self.prune_state = "stabilize_reg"
-                    for mm in self.model.modules():
+                    for n, mm in self.model.named_modules():
                         if isinstance(mm, nn.Conv2d):
-                            if mm not in self.iter_update_reg_finished.keys():
+                            if n not in self.iter_update_reg_finished:
                                 self.prune_state = "update_reg"
                                 break
                     if self.prune_state == "stabilize_reg":
