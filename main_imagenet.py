@@ -157,6 +157,7 @@ logprint = logger.log_printer
 # ---
 
 best_acc1 = 0
+best_acc1_epoch = 0 # --- prune
 
 def main():
     # --- prune
@@ -196,7 +197,7 @@ def main():
 
 
 def main_worker(gpu, ngpus_per_node, args):
-    global best_acc1
+    global best_acc1, best_acc1_epoch
     args.gpu = gpu
 
     if args.gpu is not None:
@@ -463,9 +464,10 @@ def main_worker(gpu, ngpus_per_node, args):
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
+        best_acc1_epoch = epoch
 
-        logprint("Acc1 = %.4f Acc5 = %.4f Epoch = %d (after update) [prune_state = finetune] (best Acc1 = %.4f)" % 
-            (acc1, acc5, epoch, best_acc1))
+        logprint("Acc1 = %.4f Acc5 = %.4f Epoch = %d (after update) [prune_state = finetune] (best Acc1 = %.4f epoch = %d)" % 
+            (acc1, acc5, epoch, best_acc1, best_acc1_epoch))
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):

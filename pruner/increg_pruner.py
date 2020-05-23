@@ -384,8 +384,8 @@ class IncRegPruner(Pruner):
                 # test
                 if total_iter % self.args.test_interval == 0:
                     acc1, acc5 = self.test(self.model)
-                    self.print("Acc1 = %.4f Acc5 = %.4f Iter = %d (before update) [prune_state = %s]" % 
-                        (acc1, acc5, total_iter, self.prune_state))
+                    self.print("Acc1 = %.4f Acc5 = %.4f Iter = %d (before update) [prune_state = %s method = %s]" % 
+                        (acc1, acc5, total_iter, self.prune_state, self.args.method))
                 
                 # save model (save model before a batch starts)
                 if total_iter % self.args.save_interval == 0:
