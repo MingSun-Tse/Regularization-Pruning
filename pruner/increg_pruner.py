@@ -147,11 +147,14 @@ class IncRegPruner(Pruner):
         return finish_condition
 
     def _ada_reg(self, m, name):
-        pr = self._get_layer_pr(name)
-        if pr == 0:
-            return True
         w_abs = self.w_abs[name]
         n_wg = len(w_abs)
+        pr = self._get_layer_pr(name)
+        if pr == 0:
+            self.kept_wg[m] = range(n_wg)
+            self.pruned_wg[m] = []
+            return True
+        
         if 0: # m in self.iter_finish_pick.keys(): # not use for now
             # for pruned weights, push them more 
             if self.args.wg == 'channel':
