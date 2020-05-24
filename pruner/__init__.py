@@ -10,7 +10,9 @@ from utils import strdict_to_dict
 class Layer:
     def __init__(self, name, size, layer_index, res=False):
         self.name = name
-        self.size = size # 4-d kernel size
+        self.size = []
+        for x in size:
+            self.size.append(x)
         self.layer_index = layer_index
         self.is_shortcut = True if "downsample" in name else False
         if res:

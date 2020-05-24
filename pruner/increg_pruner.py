@@ -219,7 +219,9 @@ class IncRegPruner(Pruner):
             ax.set_xlabel('filter index')
             ax.set_ylabel('relative L1-norm ratio')
             layer_index = self.layers[name].layer_index
-            ax.set_title("layer %d iter %d (max = %s)" % (layer_index, self.total_iter, max_))
+            shape = self.layers[name].size
+            ax.set_title("layer %d iter %d shape %s\n(max = %s)" 
+                % (layer_index, self.total_iter, shape, max_))
             out = pjoin(self.logger.logplt_path, "%d_iter%d_w_abs_dist.jpg" % 
                                     (layer_index, self.total_iter))
             fig.savefig(out)
