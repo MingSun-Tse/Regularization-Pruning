@@ -464,7 +464,8 @@ def main_worker(gpu, ngpus_per_node, args):
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
-        best_acc1_epoch = epoch
+        if is_best:
+            best_acc1_epoch = epoch
 
         logprint("Acc1 = %.4f Acc5 = %.4f Epoch = %d (after update) [prune_state = finetune] (best Acc1 = %.4f epoch = %d)" % 
             (acc1, acc5, epoch, best_acc1, best_acc1_epoch))
