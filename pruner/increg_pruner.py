@@ -214,9 +214,8 @@ class IncRegPruner(Pruner):
             common_ratio = len(picked_wg_in_common) / len(pruned_wg) if len(pruned_wg) else -1
             layer_index = self.layers[name].layer_index
             n_finish_pick = len(self.iter_finish_pick)
-            self.print("    ! [%d] Just finished picking the pruned (n_finish_pick = %d). Iter = %d" % 
-                (layer_index, n_finish_pick, self.total_iter))
-            self.print("    %.2f weight groups chosen by L1 and AdaReg in common" % common_ratio)
+            self.print("    [%d] Just finished picking (n_finish_pick = %d). %.2f in common chosen by L1 & AdaReg. Iter = %d" % 
+                (layer_index, n_finish_pick, common_ratio, self.total_iter))
 
             # check if all layers finish picking
             self.all_layer_finish_pick = True
@@ -263,7 +262,7 @@ class IncRegPruner(Pruner):
                 if finish_update_reg:
                     # after 'update_reg' stage, keep the reg to stabilize weight magnitude
                     self.iter_update_reg_finished[name] = self.total_iter
-                    self.print("    ! [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
+                    self.print("    [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
 
                     # check if all layers finish 'update_reg'
                     self.prune_state = "stabilize_reg"
@@ -274,7 +273,7 @@ class IncRegPruner(Pruner):
                                 break
                     if self.prune_state == "stabilize_reg":
                         self.iter_stabilize_reg = self.total_iter
-                        self.print("    ! All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
+                        self.print("    All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
                         self._save_model(mark='just_finished_update_reg')
                     
                 # after reg is updated, print to check
@@ -351,7 +350,7 @@ class IncRegPruner(Pruner):
                 # test
                 if total_iter % self.args.test_interval == 0:
                     acc1, acc5 = self.test(self.model)
-                    self.print("Acc1 = %.4f Acc5 = %.4f Iter = %d (before update) [prune_state = %s method = %s]" % 
+                    self.print("Acc1 = %.4f Acc5 = %.4f Iter = %d (before update) [prune_state = %s, method = %s]" % 
                         (acc1, acc5, total_iter, self.prune_state, self.args.method))
                 
                 # save model (save model before a batch starts)
@@ -422,7 +421,7 @@ class IncRegPruner(Pruner):
                 #             plot_weights_heatmap(self.reg[name], out_path2)
                 
                 if self.args.AdaReg_only_picking and self.all_layer_finish_pick:
-                    self.print("AdaReg just finished picking pruned wg for all layers. Iter = %d" % total_iter)
+                    self.print("AdaReg just finished picking for all layers. Resume original model and switch to IncReg. Iter = %d" % total_iter)
                     # set to IncReg method
                     self.model = self.original_model # reload the original model
                     self.optimizer = optim.SGD(self.model.parameters(), 
@@ -438,18 +437,17 @@ class IncRegPruner(Pruner):
                 
                 if self.args.AdaReg_revive_kept and self.all_layer_finish_pick:
                     self._prune_and_build_new_model()
-                    self.print("Picking is done, prune model and go to 'finetune'")
+                    self.print("AdaReg just finished picking for all layers. Pruned and go to 'finetune'. Iter = %d" % total_iter)
                     return copy.deepcopy(self.model)
                 
                 # change prune state
                 if self.prune_state == "stabilize_reg" and total_iter - self.iter_stabilize_reg == self.args.stabilize_reg_interval:
-                    self.print("'stabilize_reg' is done. Now prune. Iter = %d" % total_iter)
                     self._prune_and_build_new_model() 
-                    self.print("Prune is done, go to 'finetune'")
+                    self.print("'stabilize_reg' is done. Pruned, go to 'finetune'. Iter = %d" % total_iter)
                     return copy.deepcopy(self.model)
 
                 if total_iter % self.args.print_interval == 0:
                     t2 = time.time()
                     total_time = t2 - t1
-                    self.print("speed = %.2f iter/s" % (self.args.print_interval / total_time))
+                    self.print("speed = %.4f iter/s" % (self.args.print_interval / total_time))
                     t1 = t2
