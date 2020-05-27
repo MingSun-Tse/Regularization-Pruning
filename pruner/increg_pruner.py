@@ -125,8 +125,8 @@ class IncRegPruner(Pruner):
         elif self.args.wg == "filter":
             self.reg[name][pruned, :] = 1e4 * self.args.weight_decay * self.args.reg_multiplier
 
-        finish_condition = self.total_iter > 10000
-        return finish_condition
+        finish_update_reg = self.total_iter > 10000
+        return finish_update_reg
 
     def _inc_reg(self, m, name):
         if self._get_layer_pr(name) == 0:
@@ -140,11 +140,11 @@ class IncRegPruner(Pruner):
             self.reg[name][pruned, :] += self.args.weight_decay * self.args.reg_multiplier
         
         # when all layers are pushed hard enough, stop
-        finish_condition = True
+        finish_update_reg = True
         for k in self.hist_mag_ratio:
             if self.hist_mag_ratio[k] < 1000:
-                finish_condition = False
-        return finish_condition
+                finish_update_reg = False
+        return finish_update_reg
 
     def _ada_reg(self, m, name):
         w_abs = self.w_abs[name]
@@ -250,17 +250,17 @@ class IncRegPruner(Pruner):
 
             # check if all layer finishes picking
             self.all_layer_finish_pick = True
-            for k in self.reg.keys():
+            for k in self.reg:
                 if self._get_layer_pr(k) > 0:
-                    if k not in self.iter_finish_pick.keys():
+                    if k not in self.iter_finish_pick:
                         self.all_layer_finish_pick = False
                         break
         
-        if self.args.AdaReg_only_picking:
-            finish_condition = False
+        if self.args.AdaReg_only_picking or self.args.AdaReg_revive_kept:
+            finish_update_reg = False
         else:
-            finish_condition = self.hist_mag_ratio[name] > 1000
-        return finish_condition
+            finish_update_reg = self.hist_mag_ratio[name] > 1000
+        return finish_update_reg
 
     def _update_reg(self):
         for name, m in self.model.named_modules():
@@ -281,17 +281,17 @@ class IncRegPruner(Pruner):
                 # update reg functions, two things: 
                 # (1) update reg of this layer (2) determine if it is time to stop update reg
                 if self.args.method == "FixReg":
-                    finish_condition = self._fix_reg(m, name)
+                    finish_update_reg = self._fix_reg(m, name)
                 elif self.args.method == "IncReg":
-                    finish_condition = self._inc_reg(m, name)
+                    finish_update_reg = self._inc_reg(m, name)
                 elif self.args.method == "AdaReg":
-                    finish_condition = self._ada_reg(m, name)
+                    finish_update_reg = self._ada_reg(m, name)
                 else:
                     self.print("Wrong 'method'. Please check.")
                     exit(1)
 
                 # check prune state
-                if finish_condition:
+                if finish_update_reg:
                     # after 'update_reg' stage, keep the reg to stabilize weight magnitude
                     self.iter_update_reg_finished[name] = self.total_iter
                     self.print("    ! [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
@@ -308,13 +308,6 @@ class IncRegPruner(Pruner):
                         self.print("    ! All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
                         self._save_model(mark='just_finished_update_reg')
                     
-                    # not used for now
-                    # if self.args.method == "AdaReg":
-                    #     if self.args.wg == 'channel':
-                    #         self.reg[name][:, self.kept_wg[name]] = 0 
-                    #     elif self.args.wg == 'filter':
-                    #         self.reg[name][self.kept_wg[name], :] = 0
-
                 # after reg is updated, print to check
                 if self.total_iter % self.args.print_interval == 0:
                     self.print("    Reg status: min = %.5f ave = %.5f max = %.5f" % 
@@ -461,7 +454,6 @@ class IncRegPruner(Pruner):
                 
                 if self.args.AdaReg_only_picking and self.all_layer_finish_pick:
                     self.print("AdaReg just finished picking pruned wg for all layers. Iter = %d" % total_iter)
-
                     # set to IncReg method
                     self.model = self.original_model # reload the original model
                     self.optimizer = optim.SGD(self.model.parameters(), 
