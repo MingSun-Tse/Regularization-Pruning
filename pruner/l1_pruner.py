@@ -4,11 +4,11 @@ import copy
 import time
 import numpy as np
 from utils import _weights_init
-from pruner import Pruner
+from pruner import MetaPruner
 
-class L1Pruner(Pruner):
+class Pruner(MetaPruner):
     def __init__(self, model, args, logger, runner):
-        super(L1Pruner, self).__init__(model, args, logger, runner)
+        super(Pruner, self).__init__(model, args, logger, runner)
 
     def prune(self):
         self._get_kept_wg_L1()

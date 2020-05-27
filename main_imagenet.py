@@ -27,8 +27,8 @@ import torchvision.models as models
 
 # --- prune
 import copy
+from importlib import import_module
 from data import Data
-from pruner import l1_pruner, increg_pruner
 from logger import Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
 from utils import strlist_to_list, check_path, parse_prune_ratio_vgg
@@ -385,7 +385,8 @@ def main_worker(gpu, ngpus_per_node, args):
                 runner.criterion = criterion
                 runner.args = args
                 runner.save = save_model
-                pruner = l1_pruner.L1Pruner(model, args, logger, runner)
+                import pruner.l1_pruner as p
+                pruner = p.Pruner(model, args, logger, runner)
                 model = pruner.prune()
 
             model.load_state_dict(state['state_dict'])
@@ -397,18 +398,15 @@ def main_worker(gpu, ngpus_per_node, args):
                     args.directly_ft_weights, args.start_epoch, prune_state))
 
         if prune_state != 'finetune':
-            class runner: pass
+            class runner: pass # to pass arguments
             runner.test = validate
             runner.test_loader = val_loader
             runner.train_loader = train_loader_prune
             runner.criterion = criterion
             runner.args = args
             runner.save = save_model
-            if args.method == "L1":
-                Pruner = l1_pruner.L1Pruner
-            elif args.method.endswith("Reg"):
-                Pruner = increg_pruner.IncRegPruner
-            pruner = Pruner(model, args, logger, runner)
+            module = import_module('pruner.%s_pruner' % args.method.lower())
+            pruner = module.Pruner(model, args, logger, runner)
             model = pruner.prune() # pruned model
 
             # since model is new, we need a new optimizer

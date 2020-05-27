@@ -41,7 +41,7 @@ class Layer:
             except:
                 print(name)
     
-class Pruner:
+class MetaPruner:
     def __init__(self, model, args, logger, runner):
         self.model = model
         self.args = args
@@ -218,7 +218,6 @@ class Pruner:
             (wg == "filter" and block_index == self.n_conv_within_block - 1):
             pr = 0
         
-
         # adjust
         if self.args.pr_ratio_file:
             line = open(self.args.pr_ratio_file).readline()

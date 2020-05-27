@@ -5,15 +5,15 @@ import os
 import copy
 import time
 import numpy as np
-from pruner import Pruner
+from pruner import MetaPruner
 from utils import plot_weights_heatmap
 import math
 import matplotlib.pyplot as plt
 pjoin = os.path.join
 
-class IncRegPruner(Pruner):
+class Pruner(MetaPruner):
     def __init__(self, model, args, logger, runner):
-        super(IncRegPruner, self).__init__(model, args, logger, runner)
+        super(Pruner, self).__init__(model, args, logger, runner)
 
         # Reg related variables
         self.reg = {}
