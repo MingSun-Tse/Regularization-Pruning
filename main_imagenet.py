@@ -124,6 +124,7 @@ parser.add_argument('--directly_ft_weights', type=str, default=None, help="the p
 parser.add_argument('--base_model_path', type=str, default=None, help="the path to the unpruned base model")
 parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--AdaReg_only_picking', action="store_true")
+parser.add_argument('--AdaReg_revive_kept', action="store_true")
 parser.add_argument('--block_loss_grad', action="store_true", help="block the grad from loss, only apply wd")
 parser.add_argument('--reg_upper_limit', type=float, default=1.)
 parser.add_argument('--reg_upper_limit_pick', type=float, default=0.25)

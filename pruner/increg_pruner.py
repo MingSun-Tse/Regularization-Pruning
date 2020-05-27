@@ -473,7 +473,7 @@ class IncRegPruner(Pruner):
                 
                 if self.args.AdaReg_only_picking and self.all_layer_finish_pick:
                     self.print("AdaReg just finished picking pruned wg for all layers. Iter = %d" % total_iter)
-                    
+
                     # set to IncReg method
                     self.model = self.original_model # reload the original model
                     self.optimizer = optim.SGD(self.model.parameters(), 
@@ -487,12 +487,17 @@ class IncRegPruner(Pruner):
                         self.reg[k] = torch.zeros_like(self.reg[k]).cuda()
                     self.hist_mag_ratio = {}
                 
+                if self.args.AdaReg_revive_kept and self.all_layer_finish_pick:
+                    self._prune_and_build_new_model()
+                    self.print("Picking is done, prune model and go to 'finetune'")
+                    return copy.deepcopy(self.model)
+                
                 # change prune state
                 if self.prune_state == "stabilize_reg" and total_iter - self.iter_stabilize_reg == self.args.stabilize_reg_interval:
                     self.print("'stabilize_reg' is done. Now prune. Iter = %d" % total_iter)
                     self._prune_and_build_new_model() 
                     self.print("Prune is done, go to 'finetune'")
-                    return copy.deepcopy(self.model) # the only out of this loop
+                    return copy.deepcopy(self.model)
 
                 if total_iter % self.args.print_interval == 0:
                     t2 = time.time()
