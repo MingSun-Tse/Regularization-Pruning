@@ -450,10 +450,10 @@ def main_worker(gpu, ngpus_per_node, args):
         # --- prune: use our own lr scheduler
         if args.method:
             lr_scheduler(optimizer, epoch)
-            lr = lr_scheduler.get_lr(optimizer)
-            logprint("==> Set lr = %s" % lr)
         else:
             adjust_learning_rate(optimizer, epoch, args)
+        lr = lr_scheduler.get_lr(optimizer)
+        logprint("==> Set lr = %s" % lr)
         # ---
 
         # train for one epoch
@@ -481,8 +481,8 @@ def main_worker(gpu, ngpus_per_node, args):
         if is_best:
             best_acc1_epoch = epoch
 
-        logprint("Acc1 = %.4f Acc5 = %.4f Epoch = %d (after update) [prune_state = finetune] (best Acc1 = %.4f epoch = %d)" % 
-            (acc1, acc5, epoch, best_acc1, best_acc1_epoch))
+        logprint("Acc1 = %.4f Acc5 = %.4f Epoch %d (after update) lr %.4f (Best Acc1 %.4f @ Epoch %d)" % 
+            (acc1, acc5, epoch, lr, best_acc1, best_acc1_epoch))
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
@@ -661,10 +661,6 @@ def adjust_learning_rate(optimizer, epoch, args):
     lr = args.lr * (0.1 ** (epoch // 30))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
-    # --- prune
-    logprint("==> Set lr = %s" % lr)
-    # ---
-
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
