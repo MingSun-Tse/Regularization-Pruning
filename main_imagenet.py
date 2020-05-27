@@ -28,8 +28,7 @@ import torchvision.models as models
 # --- prune
 import copy
 from data import Data
-from pruner import l1_pruner
-from pruner import increg_pruner
+from pruner import l1_pruner, increg_pruner
 from logger import Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
 from utils import strlist_to_list, check_path, parse_prune_ratio_vgg
@@ -376,7 +375,19 @@ def main_worker(gpu, ngpus_per_node, args):
         
         if args.directly_ft_weights:
             state = torch.load(args.directly_ft_weights)
-            model = state['model'].cuda()
+            if 'model' in state:
+                model = state['model'].cuda()
+            else: # back-compatible to old saved pth, in which 'model' is not saved. Temporary use, will be removed!
+                class runner: pass
+                runner.test = validate
+                runner.test_loader = val_loader
+                runner.train_loader = train_loader_prune
+                runner.criterion = criterion
+                runner.args = args
+                runner.save = save_model
+                pruner = l1_pruner.L1Pruner(model, args, logger, runner)
+                model = pruner.prune()
+
             model.load_state_dict(state['state_dict'])
             optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                         momentum=args.momentum,
