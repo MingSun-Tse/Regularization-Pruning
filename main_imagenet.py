@@ -459,6 +459,19 @@ def main_worker(gpu, ngpus_per_node, args):
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
 
+        # --- prune: check weights magnitude
+        if args.method.endswith("Reg"):
+            for name, m in model.named_modules():
+                if name in pruner.reg:
+                    ix = pruner.layers[name].layer_index
+                    mag_now = m.weight.data.abs().mean()
+                    mag_old = pruner.original_w_mag[name]
+                    ratio = mag_now / mag_old
+                    tmp = '[%2d] %25s -- mag_old = %.4f, mag_now = %.4f (%.2f)' % (ix, name, mag_old, mag_now, ratio)
+                    print(tmp, file=logger.logtxt, flush=True)
+                    if args.screen_print:
+                        print(tmp)
+
         # evaluate on validation set
         acc1, acc5 = validate(val_loader, model, criterion, args) # --- prune: added acc5
 
