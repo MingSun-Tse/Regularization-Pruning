@@ -146,6 +146,24 @@ class IncRegPruner(Pruner):
                 finish_update_reg = False
         return finish_update_reg
 
+    def _plot_mag_ratio(self, w_abs, name):
+        fig, ax = plt.subplots()
+        max_ = w_abs.max().item()
+        w_abs_normalized = (w_abs / max_).data.cpu().numpy()
+        ax.plot(w_abs_normalized)
+        ax.set_ylim([0, 1])
+        ax.set_xlabel('filter index')
+        ax.set_ylabel('relative L1-norm ratio')
+        layer_index = self.layers[name].layer_index
+        shape = self.layers[name].size
+        ax.set_title("layer %d iter %d shape %s\n(max = %s)" 
+            % (layer_index, self.total_iter, shape, max_))
+        out = pjoin(self.logger.logplt_path, "%d_iter%d_w_abs_dist.jpg" % 
+                                (layer_index, self.total_iter))
+        fig.savefig(out)
+        plt.close(fig)
+        np.save(out.replace('.jpg', '.npy'), w_abs_normalized)
+        
     def _ada_reg(self, m, name):
         w_abs = self.w_abs[name]
         n_wg = len(w_abs)
@@ -153,9 +171,11 @@ class IncRegPruner(Pruner):
         if pr == 0:
             self.kept_wg[name] = range(n_wg)
             self.pruned_wg[name] = []
+            self.iter_finish_pick[name] = self.total_iter
             return True
         
-        if 0: # m in self.iter_finish_pick.keys(): # not use for now
+        # not use for now
+        if 0: # m in self.iter_finish_pick.keys():
             # for pruned weights, push them more 
             if self.args.wg == 'channel':
                 self.reg[name][:, self.pruned_wg[name]] += self.args.weight_decay * 10
@@ -173,65 +193,13 @@ class IncRegPruner(Pruner):
         else:
             self.reg[name] += self.args.weight_decay * self.args.reg_multiplier
 
-#                         # check ranking volatility
-#                         current_ranking = w_abs.sort()[1] # ranking of different weight groups
-#                         logtmp = "    Rank_volatility: "
-#                         v = []
-#                         cnt_reward = 0
-#                         for i in range(n_wg):
-#                             chl = current_ranking[i]
-#                             self.ranking[name][chl].append(i)
-#                             volatility = self._get_volatility(self.ranking[name][chl])
-#                             logtmp += "%d " % volatility
-#                             v.append(volatility)
-
-# #                                 # Reg reward
-# #                                 # if chl is good now and quite stable, it signs that this chl probably will be kept finally,
-# #                                 # so reward it.
-# #                                 if len(self.ranking[name][chl]) > 10:
-# #                                     if i >= int(self.args.prune_ratio * C) and volatility <= 0.02 * C:
-# #                                         cnt_reward += 1
-# #                                         self.reg[name][:, chl] -= self.args.weight_decay * 4
-# #                                         self.reg[name][:, chl] = torch.max(self.reg[name][:, chl], torch.zeros(N).cuda())
-
-#                         # print and plot
-#                         if self.total_iter % self.args.print_interval == 0:
-#                             self.print(logtmp)
-#                             self.print("    Reward_ratio = %.4f" % (cnt_reward / C))
-
-#                             # plot
-#                             # if self.total_iter % (self.args.print_interval * 10) == 0:
-#                             #     fig, ax = plt.subplots()
-#                             #     ax.plot(v)
-#                             #     ax.set_ylim([0, 100])
-#                             #     out = os.path.join(self.logger.logplt_path, "%d_iter%d_ranking.jpg" % 
-#                             #                           (cnt_m, self.total_iter))
-#                             #     fig.savefig(out)
-#                             #     plt.close(fig)
-
         # plot w_abs distribution
         if self.total_iter % self.args.plot_interval == 0:
-            fig, ax = plt.subplots()
-            max_ = w_abs.max().item()
-            w_abs_normalized = (w_abs / max_).data.cpu().numpy()
-            ax.plot(w_abs_normalized)
-            ax.set_ylim([0, 1])
-            ax.set_xlabel('filter index')
-            ax.set_ylabel('relative L1-norm ratio')
-            layer_index = self.layers[name].layer_index
-            shape = self.layers[name].size
-            ax.set_title("layer %d iter %d shape %s\n(max = %s)" 
-                % (layer_index, self.total_iter, shape, max_))
-            out = pjoin(self.logger.logplt_path, "%d_iter%d_w_abs_dist.jpg" % 
-                                    (layer_index, self.total_iter))
-            fig.savefig(out)
-            plt.close(fig)
-            np.save(out.replace('.jpg', '.npy'), w_abs_normalized)
+            self._plot_mag_ratio(w_abs, name)
 
         # print to check magnitude ratio
         if self.total_iter % self.args.pick_pruned_interval == 0:
             pruned_wg = self._pick_pruned_wg(w_abs, pr)
-            # self.print("    Pruned_wg (pr=%.4f): " % (len(pruned_wg) / n_wg))
             self._update_mag_ratio(m, name, w_abs, pruned=pruned_wg)
             
         # check if picking finishes
@@ -245,16 +213,17 @@ class IncRegPruner(Pruner):
             picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[name]]
             common_ratio = len(picked_wg_in_common) / len(pruned_wg) if len(pruned_wg) else -1
             layer_index = self.layers[name].layer_index
-            self.print("    ! [%d] Just finished picking the pruned. Iter = %d" % (layer_index, self.total_iter))
+            n_finish_pick = len(self.iter_finish_pick)
+            self.print("    ! [%d] Just finished picking the pruned (n_finish_pick = %d). Iter = %d" % 
+                (layer_index, n_finish_pick, self.total_iter))
             self.print("    %.2f weight groups chosen by L1 and AdaReg in common" % common_ratio)
 
-            # check if all layer finishes picking
+            # check if all layers finish picking
             self.all_layer_finish_pick = True
             for k in self.reg:
-                if self._get_layer_pr(k) > 0:
-                    if k not in self.iter_finish_pick:
-                        self.all_layer_finish_pick = False
-                        break
+                if self._get_layer_pr(k) > 0 and (k not in self.iter_finish_pick):
+                    self.all_layer_finish_pick = False
+                    break
         
         if self.args.AdaReg_only_picking or self.args.AdaReg_revive_kept:
             finish_update_reg = False
@@ -415,7 +384,7 @@ class IncRegPruner(Pruner):
                     w_abs_sum = 0
                     w_num_sum = 0
                     cnt_m = 0
-                    for name, m in self.model.named_modules():
+                    for _, m in self.model.named_modules():
                         if isinstance(m, nn.Conv2d):
                             cnt_m += 1
                             w_abs_sum += m.weight.abs().sum()
@@ -484,5 +453,3 @@ class IncRegPruner(Pruner):
                     total_time = t2 - t1
                     self.print("speed = %.2f iter/s" % (self.args.print_interval / total_time))
                     t1 = t2
-                
-                
