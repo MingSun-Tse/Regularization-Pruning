@@ -151,8 +151,8 @@ class IncRegPruner(Pruner):
         n_wg = len(w_abs)
         pr = self._get_layer_pr(name)
         if pr == 0:
-            self.kept_wg[m] = range(n_wg)
-            self.pruned_wg[m] = []
+            self.kept_wg[name] = range(n_wg)
+            self.pruned_wg[name] = []
             return True
         
         if 0: # m in self.iter_finish_pick.keys(): # not use for now
@@ -406,18 +406,6 @@ class IncRegPruner(Pruner):
                 y_ = self.model(inputs)
                 
                 if self.prune_state == "update_reg" and total_iter % self.args.update_reg_interval == 0:
-                    # if self.args.method == "OptReg":
-                    #     # estimate K-FAC fisher as Hessian
-                    #     softmax_y = y_.softmax(dim=1)
-                    #     if softmax_y.min() < 0 or math.isnan(softmax_y.mean()):
-                    #         print(softmax_y)
-                    #         print(y_)
-                    #         exit(1)
-                    #     sampled_y = torch.multinomial(softmax_y, 1).squeeze()
-                    #     loss_sample = self.criterion(y_, sampled_y)
-                    #     loss_sample.backward(retain_graph=True)
-                    
-                    # update reg
                     self._update_reg()
                     
                 # normal training forward
