@@ -466,7 +466,7 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             adjust_learning_rate(optimizer, epoch, args)
         lr = lr_scheduler.get_lr(optimizer)
-        logprint("==> Set lr = %s" % lr)
+        logprint("==> Set lr = %s @ Epoch %d " % (lr, epoch))
         # ---
 
         # train for one epoch
