@@ -475,7 +475,7 @@ def main_worker(gpu, ngpus_per_node, args):
         # --- prune: check weights magnitude
         if args.method.endswith("Reg"):
             for name, m in model.named_modules():
-                if name in pruner.layers:
+                if name in pruner.reg:
                     ix = pruner.layers[name].layer_index
                     mag_now = m.weight.data.abs().mean()
                     mag_old = pruner.original_w_mag[name]
