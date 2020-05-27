@@ -405,7 +405,11 @@ def main_worker(gpu, ngpus_per_node, args):
             runner.criterion = criterion
             runner.args = args
             runner.save = save_model
-            module = import_module('pruner.%s_pruner' % args.method.lower())
+            if args.method.endswith("Reg"):
+                module = 'pruner.reg_pruner'
+            else:
+                module = 'pruner.%s_pruner' % args.method.lower()
+            module = import_module(module)
             pruner = module.Pruner(model, args, logger, runner)
             model = pruner.prune() # pruned model
 
