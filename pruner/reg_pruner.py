@@ -79,7 +79,7 @@ class Pruner(MetaPruner):
             max_index += n_not_consider
             return sorted_index[:max_index + 1]
         else:
-            self.print("Wrong pr. Please check.")
+            self.logprint("Wrong pr. Please check.")
             exit(1)
     
     def _get_volatility(self, ranking):
@@ -103,8 +103,8 @@ class Pruner(MetaPruner):
         # print
         mag_ratio_now_before = ave_mag_kept / self.original_w_mag[name]
         if self.total_iter % self.args.print_interval == 0:
-            self.print("    Mag ratio = %.4f (%.4f)" % (mag_ratio, self.hist_mag_ratio[name]))
-            self.print("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % 
+            self.logprint("    Mag ratio = %.4f (%.4f)" % (mag_ratio, self.hist_mag_ratio[name]))
+            self.logprint("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % 
                 (self.original_w_mag[name], ave_mag_kept, mag_ratio_now_before))
 
     def _get_score(self, m):
@@ -214,7 +214,7 @@ class Pruner(MetaPruner):
             common_ratio = len(picked_wg_in_common) / len(pruned_wg) if len(pruned_wg) else -1
             layer_index = self.layers[name].layer_index
             n_finish_pick = len(self.iter_finish_pick)
-            self.print("    [%d] Just finished picking (n_finish_pick = %d). %.2f in common chosen by L1 & AdaReg. Iter = %d" % 
+            self.logprint("    [%d] Just finished picking (n_finish_pick = %d). %.2f in common chosen by L1 & AdaReg. Iter = %d" % 
                 (layer_index, n_finish_pick, common_ratio, self.total_iter))
 
             # check if all layers finish picking
@@ -240,7 +240,7 @@ class Pruner(MetaPruner):
                     continue
 
                 if self.total_iter % self.args.print_interval == 0:
-                    self.print("[%d] Update reg for layer '%s'. Pr = %s. Iter = %d" 
+                    self.logprint("[%d] Update reg for layer '%s'. Pr = %s. Iter = %d" 
                         % (cnt_m, name, pr, self.total_iter))
                 
                 # get the importance score (L1-norm in this case)
@@ -255,14 +255,14 @@ class Pruner(MetaPruner):
                 elif self.args.method == "AdaReg":
                     finish_update_reg = self._ada_reg(m, name)
                 else:
-                    self.print("Wrong 'method'. Please check.")
+                    self.logprint("Wrong 'method'. Please check.")
                     exit(1)
 
                 # check prune state
                 if finish_update_reg:
                     # after 'update_reg' stage, keep the reg to stabilize weight magnitude
                     self.iter_update_reg_finished[name] = self.total_iter
-                    self.print("    [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
+                    self.logprint("    [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
 
                     # check if all layers finish 'update_reg'
                     self.prune_state = "stabilize_reg"
@@ -273,12 +273,12 @@ class Pruner(MetaPruner):
                                 break
                     if self.prune_state == "stabilize_reg":
                         self.iter_stabilize_reg = self.total_iter
-                        self.print("    All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
+                        self.logprint("    All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
                         self._save_model(mark='just_finished_update_reg')
                     
                 # after reg is updated, print to check
                 if self.total_iter % self.args.print_interval == 0:
-                    self.print("    Reg status: min = %.5f ave = %.5f max = %.5f" % 
+                    self.logprint("    Reg status: min = %.5f ave = %.5f max = %.5f" % 
                                 (self.reg[name].min(), self.reg[name].mean(), self.reg[name].max()))
 
     def _apply_reg(self):
@@ -336,7 +336,7 @@ class Pruner(MetaPruner):
             self._resume_prune_status(self.args.resume_path)
             self._get_kept_wg_L1() # get pruned and kept wg from the resumed model
             self.model = self.model.train()
-            self.print("Resume model successfully: '{}'. Iter = {}. prune_state = {}".format(
+            self.logprint("Resume model successfully: '{}'. Iter = {}. prune_state = {}".format(
                         self.args.resume_path, self.total_iter, self.prune_state))
 
         t1 = time.time()
@@ -350,17 +350,17 @@ class Pruner(MetaPruner):
                 # test
                 if total_iter % self.args.test_interval == 0:
                     acc1, acc5 = self.test(self.model)
-                    self.print("Acc1 = %.4f Acc5 = %.4f Iter = %d (before update) [prune_state = %s, method = %s]" % 
+                    self.accprint("Acc1 = %.4f Acc5 = %.4f Iter = %d (before update) [prune_state = %s, method = %s]" % 
                         (acc1, acc5, total_iter, self.prune_state, self.args.method))
                 
                 # save model (save model before a batch starts)
                 if total_iter % self.args.save_interval == 0:
                     self._save_model(acc1, acc5)
-                    self.print('Periodically save model done. Iter = {}'.format(total_iter))
+                    self.logprint('Periodically save model done. Iter = {}'.format(total_iter))
                     
                 if total_iter % self.args.print_interval == 0:
-                    self.print("")
-                    self.print("Iter = %d [prune_state = %s, method = %s] " 
+                    self.logprint("")
+                    self.logprint("Iter = %d [prune_state = %s, method = %s] " 
                         % (total_iter, self.prune_state, self.args.method) + "-"*40)
                     
                 # forward
@@ -397,14 +397,14 @@ class Pruner(MetaPruner):
                             # logtmp2 = ""
                             # for x in torch.diag(self.reg[name])[:20]:
                             #     logtmp2 += "{:8.6f} ".format(x.item())
-                            # self.print("{:2d}: {}".format(cnt_m, logtmp2))
-                            # self.print("  : {}".format(logtmp1))
-                            # self.print("")
+                            # self.logprint("{:2d}: {}".format(cnt_m, logtmp2))
+                            # self.logprint("  : {}".format(logtmp1))
+                            # self.logprint("")
 
                     _, predicted = y_.max(1)
                     correct = predicted.eq(targets).sum().item()
                     train_acc = correct / targets.size(0)
-                    self.print("After optim update, ave_abs_weight: %.10f current_train_loss: %.4f current_train_acc: %.4f" %
+                    self.logprint("After optim update, ave_abs_weight: %.10f current_train_loss: %.4f current_train_acc: %.4f" %
                         (w_abs_sum / w_num_sum, loss.item(), train_acc))
                 
                 # Save heatmap of weights to check the magnitude
@@ -421,7 +421,7 @@ class Pruner(MetaPruner):
                 #             plot_weights_heatmap(self.reg[name], out_path2)
                 
                 if self.args.AdaReg_only_picking and self.all_layer_finish_pick:
-                    self.print("AdaReg just finished picking for all layers. Resume original model and switch to IncReg. Iter = %d" % total_iter)
+                    self.logprint("AdaReg just finished picking for all layers. Resume original model and switch to IncReg. Iter = %d" % total_iter)
                     # set to IncReg method
                     self.model = self.original_model # reload the original model
                     self.optimizer = optim.SGD(self.model.parameters(), 
@@ -437,17 +437,17 @@ class Pruner(MetaPruner):
                 
                 if self.args.AdaReg_revive_kept and self.all_layer_finish_pick:
                     self._prune_and_build_new_model()
-                    self.print("AdaReg just finished picking for all layers. Pruned and go to 'finetune'. Iter = %d" % total_iter)
+                    self.logprint("AdaReg just finished picking for all layers. Pruned and go to 'finetune'. Iter = %d" % total_iter)
                     return copy.deepcopy(self.model)
                 
                 # change prune state
                 if self.prune_state == "stabilize_reg" and total_iter - self.iter_stabilize_reg == self.args.stabilize_reg_interval:
                     self._prune_and_build_new_model() 
-                    self.print("'stabilize_reg' is done. Pruned, go to 'finetune'. Iter = %d" % total_iter)
+                    self.logprint("'stabilize_reg' is done. Pruned, go to 'finetune'. Iter = %d" % total_iter)
                     return copy.deepcopy(self.model)
 
                 if total_iter % self.args.print_interval == 0:
                     t2 = time.time()
                     total_time = t2 - t1
-                    self.print("speed = %.4f iter/s" % (self.args.print_interval / total_time))
+                    self.logprint("speed = %.4f iter/s" % (self.args.print_interval / total_time))
                     t1 = t2

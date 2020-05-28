@@ -154,6 +154,7 @@ elif args.dataset == 'tinyimagenet':
     img_size = 64
 logger = Logger(args)
 logprint = logger.log_printer
+accprint = logger.log_printer.accprint
 # ---
 
 best_acc1 = 0
@@ -486,7 +487,7 @@ def main_worker(gpu, ngpus_per_node, args):
         if is_best:
             best_acc1_epoch = epoch
 
-        logprint("Acc1 = %.4f Acc5 = %.4f Epoch %d (after update) lr %s (Best Acc1 %.4f @ Epoch %d)" % 
+        accprint("Acc1 = %.4f Acc5 = %.4f Epoch %d (after update) lr %s (Best Acc1 %.4f @ Epoch %d)" % 
             (acc1, acc5, epoch, lr, best_acc1, best_acc1_epoch))
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
