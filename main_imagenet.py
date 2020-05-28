@@ -332,8 +332,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     if args.evaluate:
         acc1, acc5 = validate(val_loader, model, criterion, args)
-        # return # --- prune: remove this to test before training
-        logprint("Acc1 = {:.4f} Acc5 = {:.4f}".format(acc1, acc5))
+        return
 
     # --- prune
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
@@ -351,13 +350,6 @@ def main_worker(gpu, ngpus_per_node, args):
         n_params_original = get_n_params(model)
         n_flops_original = get_n_flops(model, input_res=img_size)
 
-        # if args.direct_ft_weights:
-        #     state = torch.load(args.direct_ft_weights)
-        #     model = state['model'].cuda()
-        #     model.load_state_dict(state['state_dict'])
-        #     logprint("==> Load pretrained pruned model successfully: '{}'".format(args.direct_ft_weights))
-        #     # TODO: This demands the gpu number is the same as previous experiment. Get over it.
-        
         prune_state = ''
         if args.resume_path:
             state = torch.load(args.resume_path)
@@ -438,6 +430,10 @@ def main_worker(gpu, ngpus_per_node, args):
                  'ExpID': logger.ExpID,
         }
         save_model(state, mark="just_finished_prune")
+        # print pruned model arch to log file
+        print(model, file=logger.logtxt, flush=True)
+        if args.screen_print:
+            print(model)
 
         # lr finetune schduler
         lr_s = args.lr_ft
@@ -448,12 +444,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 epoch = int(x.split(":")[0].strip())
                 lr = float(x.split(":")[1].strip())
                 lr_schedule[epoch] = lr
-        lr_scheduler = PresetLRScheduler(lr_schedule)
-        
-        # print pruned model arch to log file
-        print(model, file=logger.logtxt, flush=True)
-        if args.screen_print:
-            print(model)
+            lr_scheduler = PresetLRScheduler(lr_schedule)
     # ---
     
     for epoch in range(args.start_epoch, args.epochs):
@@ -465,7 +456,8 @@ def main_worker(gpu, ngpus_per_node, args):
             lr_scheduler(optimizer, epoch)
         else:
             adjust_learning_rate(optimizer, epoch, args)
-        lr = lr_scheduler.get_lr(optimizer)
+        for param_group in optimizer.param_groups:
+            lr = param_group['lr']
         logprint("==> Set lr = %s @ Epoch %d " % (lr, epoch))
         # ---
 
