@@ -24,6 +24,7 @@ class Pruner(MetaPruner):
         self.iter_finish_pick = {}
         self.iter_stabilize_reg = math.inf
         self.original_w_mag = {}
+        self.original_kept_w_mag = {}
         self.ranking = {}
         self.pruned_wg_L1 = {}
         self.all_layer_finish_pick = False
@@ -33,28 +34,28 @@ class Pruner(MetaPruner):
         
         # prune_init, to determine the pruned weights
         # this will update the 'self.kept_wg' and 'self.pruned_wg' 
-        if self.args.method.endswith('Reg'):
+        if self.args.method in ['FixReg', 'IncReg']:
             self._get_kept_wg_L1()
-            if self.args.method == "AdaReg":
-                for k, v in self.pruned_wg.items():
-                    self.pruned_wg_L1[k] = v
-                self.pruned_wg = {}
-                self.kept_wg = {}
+        for k, v in self.pruned_wg.items():
+            self.pruned_wg_L1[k] = v
 
         self.prune_state = "update_reg"
-        if self.args.method.endswith("Reg"):
-            for name, m in self.model.named_modules():
-                if isinstance(m, nn.Conv2d):
-                    N, C, H, W = m.weight.data.size()
-                    self.reg[name] = torch.zeros(N, C).cuda()
-                    self.original_w_mag[name] = m.weight.abs().mean().item()
-                    self.ranking[name] = []
-                    if self.args.wg == "filter":
-                        n_wg = N
-                    elif self.args.wg == "channel":
-                        n_wg = C
-                    for _ in range(n_wg):
-                        self.ranking[name].append([])
+        for name, m in self.model.named_modules():
+            if isinstance(m, nn.Conv2d):
+                N, C, H, W = m.weight.data.size()
+                self.reg[name] = torch.zeros(N, C).cuda()
+                self.ranking[name] = []
+                if self.args.wg == "filter":
+                    n_wg = N
+                    w_abs = m.weight.abs().mean(dim=[1,2,3])
+                elif self.args.wg == "channel":
+                    n_wg = C
+                    w_abs = m.weight.abs().mean(dim=[0,2,3])
+                for _ in range(n_wg):
+                    self.ranking[name].append([])
+                self.original_w_mag[name] = m.weight.abs().mean().item()
+                kept_wg_L1 = [i for i in range(n_wg) if i not in self.pruned_wg_L1[name]]
+                self.original_kept_w_mag[name] = w_abs[kept_wg_L1].mean().item()
 
     def _pick_pruned_wg(self, w, pr):
         if pr == 0:
@@ -101,11 +102,12 @@ class Pruner(MetaPruner):
             mag_ratio = math.inf
             self.hist_mag_ratio[name] = math.inf
         # print
-        mag_ratio_now_before = ave_mag_kept / self.original_w_mag[name]
         if self.total_iter % self.args.print_interval == 0:
             self.logprint("    Mag ratio = %.4f (%.4f)" % (mag_ratio, self.hist_mag_ratio[name]))
-            self.logprint("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % 
-                (self.original_w_mag[name], ave_mag_kept, mag_ratio_now_before))
+            if self.args.method != "AdaReg":
+                mag_ratio_now_before = ave_mag_kept / self.original_kept_w_mag[name]
+                self.logprint("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % 
+                    (self.original_kept_w_mag[name], ave_mag_kept, mag_ratio_now_before))
 
     def _get_score(self, m):
         if self.args.wg == "channel":
@@ -176,20 +178,21 @@ class Pruner(MetaPruner):
         
         # not use for now
         if 0: # m in self.iter_finish_pick.keys():
-            # for pruned weights, push them more 
-            if self.args.wg == 'channel':
-                self.reg[name][:, self.pruned_wg[name]] += self.args.weight_decay * 10
-            elif self.args.wg == 'filter':
-                self.reg[name][self.pruned_wg[name], :] += self.args.weight_decay * 10
+            pass
+            # # for pruned weights, push them more 
+            # if self.args.wg == 'channel':
+            #     self.reg[name][:, self.pruned_wg[name]] += self.args.weight_decay * 10
+            # elif self.args.wg == 'filter':
+            #     self.reg[name][self.pruned_wg[name], :] += self.args.weight_decay * 10
 
-            # for kept weights, bring them back
-            current_w_mag = w_abs[self.kept_wg[name]].mean()
-            recover_reg = min((current_w_mag / self.original_w_mag[name] - 1) * self.args.weight_decay * 10, 
-                    self.args.weight_decay)
-            if self.args.wg == 'channel':
-                self.reg[name][:, self.kept_wg[name]] = recover_reg
-            elif self.args.wg == 'filter':
-                self.reg[name][self.kept_wg[name], :] = recover_reg
+            # # for kept weights, bring them back
+            # current_w_mag = w_abs[self.kept_wg[name]].mean()
+            # recover_reg = min((current_w_mag / self.original_w_mag[name] - 1) * self.args.weight_decay * 10, 
+            #         self.args.weight_decay)
+            # if self.args.wg == 'channel':
+            #     self.reg[name][:, self.kept_wg[name]] = recover_reg
+            # elif self.args.wg == 'filter':
+            #     self.reg[name][self.kept_wg[name], :] = recover_reg
         else:
             self.reg[name] += self.args.weight_decay * self.args.reg_multiplier
 
