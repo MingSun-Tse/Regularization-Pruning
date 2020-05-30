@@ -34,10 +34,13 @@ class Pruner(MetaPruner):
         
         # prune_init, to determine the pruned weights
         # this will update the 'self.kept_wg' and 'self.pruned_wg' 
-        if self.args.method in ['FixReg', 'IncReg']:
+        if self.args.method.endswith('Reg'):
             self._get_kept_wg_L1()
         for k, v in self.pruned_wg.items():
             self.pruned_wg_L1[k] = v
+        if self.args.method == 'AdaReg': # AdaReg will determine which wgs to prune later, so clear it here
+            self.kept_wg = {}
+            self.pruned_wg = {}
 
         self.prune_state = "update_reg"
         for name, m in self.model.named_modules():
