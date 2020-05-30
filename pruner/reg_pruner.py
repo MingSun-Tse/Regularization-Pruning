@@ -146,7 +146,7 @@ class Pruner(MetaPruner):
         for k in self.hist_mag_ratio:
             if self.hist_mag_ratio[k] < 1000:
                 finish_update_reg = False
-        return finish_update_reg
+        return finish_update_reg or self.reg[name].max() > self.args.reg_upper_limit
 
     def _plot_mag_ratio(self, w_abs, name):
         fig, ax = plt.subplots()
