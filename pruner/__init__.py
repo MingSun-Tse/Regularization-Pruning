@@ -242,22 +242,28 @@ class MetaPruner:
         return pr
 
     def _get_kept_wg_L1(self):
-        wg = self.args.wg
-        for name, m in self.model.named_modules():
-            if isinstance(m, nn.Conv2d):
-                N, C, _, _ = m.weight.size()
-                if wg == "filter":
-                    w_abs = m.weight.abs().mean(dim=[1, 2, 3])
-                    n_wg = N
-                elif wg == "channel":
-                    w_abs = m.weight.abs().mean(dim=[0, 2, 3])
-                    n_wg = C
-                elif wg == "weight":
-                    w_abs = m.weight.abs()
-                    n_wg = m.weight.numel()
-                pr = self._get_layer_pr(name)
-                self.pruned_wg[name] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
-                self.kept_wg[name] = [i for i in range(n_wg) if i not in self.pruned_wg[name]]
+        if self.args.base_pr_model:
+            state = torch.load(self.args.base_pr_model)
+            self.pruned_wg = state['pruned_wg']
+            self.kept_wg = state['kept_wg']
+            self.logprint("==> Load base pr model successfully: '{}'".format(self.args.base_pr_model))
+        else:    
+            wg = self.args.wg
+            for name, m in self.model.named_modules():
+                if isinstance(m, nn.Conv2d):
+                    N, C, _, _ = m.weight.size()
+                    if wg == "filter":
+                        w_abs = m.weight.abs().mean(dim=[1, 2, 3])
+                        n_wg = N
+                    elif wg == "channel":
+                        w_abs = m.weight.abs().mean(dim=[0, 2, 3])
+                        n_wg = C
+                    elif wg == "weight":
+                        w_abs = m.weight.abs()
+                        n_wg = m.weight.numel()
+                    pr = self._get_layer_pr(name)
+                    self.pruned_wg[name] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
+                    self.kept_wg[name] = [i for i in range(n_wg) if i not in self.pruned_wg[name]]
     
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":

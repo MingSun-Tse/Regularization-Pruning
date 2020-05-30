@@ -131,6 +131,7 @@ parser.add_argument('--mag_ratio_limit', type=float, default=10)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
 parser.add_argument('--pick_pruned_interval', type=int, default=1, help="the interval to pick pruned in AdaReg")
 parser.add_argument('--pr_ratio_file', type=str, default=None)
+parser.add_argument('--base_pr_model', type=str, default=None, help='the model that provides layer-wise pr')
 args = parser.parse_args()
 args.copy_bn_w = True
 args.copy_bn_b = True
@@ -145,6 +146,7 @@ elif args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
 args.resume_path = check_path(args.resume_path)
 args.directly_ft_weights = check_path(args.directly_ft_weights)
 args.base_model_path = check_path(args.base_model_path)
+args.base_pr_model = check_path(args.base_pr_model)
 args.data = pjoin(args.data_path, args.dataset)
 if args.dataset == 'imagenet':
     img_size = 224
@@ -421,7 +423,7 @@ def main_worker(gpu, ngpus_per_node, args):
         logprint("==> Reduction ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
         t1 = time.time()
         acc1, acc5 = validate(val_loader, model, criterion, args)
-        logprint("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
+        accprint("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
             (acc1, acc5, time.time()-t1))
         state = {'arch': args.arch,
                  'model': model,
@@ -429,6 +431,8 @@ def main_worker(gpu, ngpus_per_node, args):
                  'acc1': acc1,
                  'acc5': acc5,
                  'ExpID': logger.ExpID,
+                 'pruned_wg': pruner.pruned_wg,
+                 'kept_wg': pruner.kept_wg,
         }
         save_model(state, mark="just_finished_prune")
         # print pruned model arch to log file
