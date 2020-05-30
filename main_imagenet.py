@@ -32,7 +32,7 @@ from data import Data
 from logger import Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
 from utils import strlist_to_list, check_path, parse_prune_ratio_vgg
-import model.resnet_cifar10 as resnet_cifar10
+from model import resnet_cifar10, vgg
 pjoin = os.path.join
 # ---
 
@@ -223,8 +223,11 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             logprint("=> creating model '{}'".format(args.arch))
             model = models.__dict__[args.arch]()
-    elif args.dataset == "cifar10": # --- prune
+    # --- prune: added cifar10, 100, tinyimagenet
+    elif args.dataset == "cifar10":
         model = eval("resnet_cifar10.%s" % args.arch)()
+    elif args.dataset == 'cifar100':
+        model = eval('vgg.%s' % args.arch)()
     else:
         raise NotImplementedError
 
