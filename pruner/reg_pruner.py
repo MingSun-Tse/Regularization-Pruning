@@ -106,7 +106,7 @@ class Pruner(MetaPruner):
             self.logprint("    Mag ratio = %.4f (%.4f)" % (mag_ratio, self.hist_mag_ratio[name]))
             if self.args.method != "AdaReg":
                 mag_ratio_now_before = ave_mag_kept / self.original_kept_w_mag[name]
-                self.logprint("    For kept weights, original mag: %.6f, now: %.6f (%.4f)" % 
+                self.logprint("    For kept weights, original_kept_w_mag: %.6f, now: %.6f (%.4f)" % 
                     (self.original_kept_w_mag[name], ave_mag_kept, mag_ratio_now_before))
 
     def _get_score(self, m):
