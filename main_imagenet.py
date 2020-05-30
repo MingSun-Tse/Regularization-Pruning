@@ -444,15 +444,17 @@ def main_worker(gpu, ngpus_per_node, args):
             print(model)
 
         # lr finetune schduler
-        lr_s = args.lr_ft
-        if lr_s: # example: "0: 0.001, 50: 0.0001, 100: 0.0001"
-            lr_schedule = {}
-            tmp = lr_s.split(",") if "," in lr_s else lr_s.split(";")
-            for x in tmp:
-                epoch = int(x.split(":")[0].strip())
-                lr = float(x.split(":")[1].strip())
-                lr_schedule[epoch] = lr
-            lr_scheduler = PresetLRScheduler(lr_schedule)
+        assert args.lr_ft is not None
+        lr_s = args.lr_ft.strip() # example: '[0: 0.001, 50: 0.0001, 100: 0.0001]'
+        lr_schedule = {}
+        if lr_s.startswith('[') and lr_s.endswith(']'):
+            lr_s = lr_s[1:-1]
+        tmp = lr_s.split(",") if "," in lr_s else lr_s.split(";")
+        for x in tmp:
+            epoch = int(x.split(":")[0].strip())
+            lr = float(x.split(":")[1].strip())
+            lr_schedule[epoch] = lr
+        lr_scheduler = PresetLRScheduler(lr_schedule)
     # ---
     
     for epoch in range(args.start_epoch, args.epochs):
