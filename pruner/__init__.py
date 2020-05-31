@@ -80,12 +80,13 @@ class MetaPruner:
         if pr == 0:
             return []
         n_wg = len(w_abs.flatten())
+        n_pruned = min(ceil(pr * n_wg), n_wg - 1) # do not prune all
         if mode == "rand":
-            out = np.random.permutation(n_wg)[:ceil(pr * n_wg)]
+            out = np.random.permutation(n_wg)[:n_pruned]
         elif mode == "min":
-            out = w_abs.flatten().sort()[1][:ceil(pr * n_wg)]
+            out = w_abs.flatten().sort()[1][:n_pruned]
         elif mode == "max":
-            out = w_abs.flatten().sort()[1][-ceil(pr * n_wg):]
+            out = w_abs.flatten().sort()[1][-n_pruned:]
         return out
 
     def _register_layers(self):
