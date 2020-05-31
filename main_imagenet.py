@@ -424,20 +424,22 @@ def main_worker(gpu, ngpus_per_node, args):
         ratio_param = (n_params_original - n_params_now) / n_params_original
         ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
         logprint("==> Reduction ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
-        t1 = time.time()
-        acc1, acc5 = validate(val_loader, model, criterion, args)
-        accprint("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
-            (acc1, acc5, time.time()-t1))
-        state = {'arch': args.arch,
-                 'model': model,
-                 'state_dict': model.state_dict(),
-                 'acc1': acc1,
-                 'acc5': acc5,
-                 'ExpID': logger.ExpID,
-                 'pruned_wg': pruner.pruned_wg,
-                 'kept_wg': pruner.kept_wg,
-        }
-        save_model(state, mark="just_finished_prune")
+        if prune_state != 'finetune':
+            t1 = time.time()
+            acc1, acc5 = validate(val_loader, model, criterion, args)
+            accprint("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
+                (acc1, acc5, time.time()-t1))
+            state = {'arch': args.arch,
+                    'model': model,
+                    'state_dict': model.state_dict(),
+                    'acc1': acc1,
+                    'acc5': acc5,
+                    'ExpID': logger.ExpID,
+                    'pruned_wg': pruner.pruned_wg,
+                    'kept_wg': pruner.kept_wg,
+            }
+            save_model(state, mark="just_finished_prune")
+        
         # print pruned model arch to log file
         print(model, file=logger.logtxt, flush=True)
         if args.screen_print:
