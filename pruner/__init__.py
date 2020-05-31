@@ -361,4 +361,4 @@ class MetaPruner:
         
         self.model = new_model
         n_filter = self._get_n_filter(self.model)
-        print(n_filter)
+        self.logprint(n_filter)

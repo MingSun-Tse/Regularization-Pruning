@@ -16,7 +16,7 @@ class Pruner(MetaPruner):
                     
         if self.args.reinit:
             self.model.apply(_weights_init) # equivalent to training from scratch
-            self.print("Reinit model")
+            self.logprint("Reinit model")
 
         return self.model
     
