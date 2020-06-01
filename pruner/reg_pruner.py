@@ -184,10 +184,10 @@ class Pruner(MetaPruner):
         if name in self.iter_finish_pick:
             # for pruned weights, push them more
             if self.args.wg == 'channel':
-                self.reg[name][:, self.pruned_wg[name]] += self.args.weight_decay * self.args.reg_multiplier * 10
+                self.reg[name][:, self.pruned_wg[name]] += self.args.weight_decay * self.args.reg_multiplier
                 reg_pruned = self.reg[name][:, self.pruned_wg[name]].max()
             elif self.args.wg == 'filter':
-                self.reg[name][self.pruned_wg[name], :] += self.args.weight_decay * self.args.reg_multiplier * 10
+                self.reg[name][self.pruned_wg[name], :] += self.args.weight_decay * self.args.reg_multiplier
                 reg_pruned = self.reg[name][self.pruned_wg[name], :].max()
 
             # for kept weights, bring them back
