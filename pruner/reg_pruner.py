@@ -65,7 +65,8 @@ class Pruner(MetaPruner):
             return []
         elif pr > 0:
             w = w.flatten()
-            return w.sort()[1][:math.ceil(pr * w.size(0))]
+            n_pruned = min(math.ceil(pr * w.size(0)), w.size(0) - 1) # do not prune all
+            return w.sort()[1][:n_pruned]
         elif pr == -1: # automatically decide lr by each layer itself
             tmp = w.flatten().sort()[0]
             n_not_consider = int(len(tmp) * 0.02)
@@ -104,13 +105,14 @@ class Pruner(MetaPruner):
         else:
             mag_ratio = math.inf
             self.hist_mag_ratio[name] = math.inf
+        
         # print
+        mag_ratio_now_before = ave_mag_kept / self.original_kept_w_mag[name]
         if self.total_iter % self.args.print_interval == 0:
             self.logprint("    Mag ratio = %.4f (%.4f)" % (mag_ratio, self.hist_mag_ratio[name]))
-            if self.args.method != "AdaReg":
-                mag_ratio_now_before = ave_mag_kept / self.original_kept_w_mag[name]
-                self.logprint("    For kept weights, original_kept_w_mag: %.6f, now: %.6f (%.4f)" % 
-                    (self.original_kept_w_mag[name], ave_mag_kept, mag_ratio_now_before))
+            self.logprint("    For kept weights, original_kept_w_mag: %.6f, now: %.6f (%.4f)" % 
+                (self.original_kept_w_mag[name], ave_mag_kept, mag_ratio_now_before))
+        return mag_ratio_now_before
 
     def _get_score(self, m):
         if self.args.wg == "channel":
@@ -179,23 +181,28 @@ class Pruner(MetaPruner):
             self.iter_finish_pick[name] = self.total_iter
             return True
         
-        # not use for now
-        if 0: # m in self.iter_finish_pick.keys():
-            pass
-            # # for pruned weights, push them more 
-            # if self.args.wg == 'channel':
-            #     self.reg[name][:, self.pruned_wg[name]] += self.args.weight_decay * 10
-            # elif self.args.wg == 'filter':
-            #     self.reg[name][self.pruned_wg[name], :] += self.args.weight_decay * 10
+        if name in self.iter_finish_pick:
+            # for pruned weights, push them more
+            if self.args.wg == 'channel':
+                self.reg[name][:, self.pruned_wg[name]] += self.args.weight_decay * self.args.reg_multiplier * 10
+                reg_pruned = self.reg[name][:, self.pruned_wg[name]].max()
+            elif self.args.wg == 'filter':
+                self.reg[name][self.pruned_wg[name], :] += self.args.weight_decay * self.args.reg_multiplier * 10
+                reg_pruned = self.reg[name][self.pruned_wg[name], :].max()
 
-            # # for kept weights, bring them back
-            # current_w_mag = w_abs[self.kept_wg[name]].mean()
-            # recover_reg = min((current_w_mag / self.original_w_mag[name] - 1) * self.args.weight_decay * 10, 
-            #         self.args.weight_decay)
-            # if self.args.wg == 'channel':
-            #     self.reg[name][:, self.kept_wg[name]] = recover_reg
-            # elif self.args.wg == 'filter':
-            #     self.reg[name][self.kept_wg[name], :] = recover_reg
+            # for kept weights, bring them back
+            current_w_mag = w_abs[self.kept_wg[name]].mean()
+            recover_reg = (current_w_mag / self.original_kept_w_mag[name] - 1).item() \
+                * self.args.weight_decay * self.args.reg_multiplier * 10
+            if recover_reg > 0:
+                recover_reg = 0
+            if self.args.wg == 'channel':
+                self.reg[name][:, self.kept_wg[name]] = recover_reg
+            elif self.args.wg == 'filter':
+                self.reg[name][self.kept_wg[name], :] = recover_reg
+            if self.total_iter % self.args.print_interval == 0:
+                self.logprint("    Pushing more the pruned (reg = %.5f), bringing back the kept (reg = %.5f)" % 
+                    (reg_pruned.item(), recover_reg))
         else:
             self.reg[name] += self.args.weight_decay * self.args.reg_multiplier
 
@@ -204,9 +211,12 @@ class Pruner(MetaPruner):
             self._plot_mag_ratio(w_abs, name)
 
         # print to check magnitude ratio
-        if self.total_iter % self.args.pick_pruned_interval == 0:
+        mag_ratio_now_before = 0
+        if name in self.iter_finish_pick:
+            mag_ratio_now_before = self._update_mag_ratio(m, name, w_abs)
+        else:
             pruned_wg = self._pick_pruned_wg(w_abs, pr)
-            self._update_mag_ratio(m, name, w_abs, pruned=pruned_wg)
+            self._update_mag_ratio(m, name, w_abs, pruned=pruned_wg) # just print to check
             
         # check if picking finishes
         finish_pick_cond = self.reg[name].max() >= self.args.reg_upper_limit_pick
@@ -233,7 +243,11 @@ class Pruner(MetaPruner):
         if self.args.AdaReg_only_picking or self.args.AdaReg_revive_kept:
             finish_update_reg = False
         else:
-            finish_update_reg = self.hist_mag_ratio[name] > 1000
+            cond0 = name in self.iter_finish_pick # finsihed picking
+            cond1 = self.hist_mag_ratio[name] >= 1000 \
+                or self.reg[name].max() > self.args.reg_upper_limit
+            cond2 = mag_ratio_now_before > 0.9 # the kept has been brought back
+            finish_update_reg = cond0 and cond1 and cond2
         return finish_update_reg
 
     def _update_reg(self):
