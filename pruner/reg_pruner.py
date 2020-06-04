@@ -29,6 +29,7 @@ class Pruner(MetaPruner):
         self.pruned_wg_L1 = {}
         self.all_layer_finish_pick = False
         self.w_abs = {}
+        self.mag_reg_log = {}
         if self.args.AdaReg_only_picking:
             self.original_model = copy.deepcopy(self.model)
         
@@ -170,8 +171,26 @@ class Pruner(MetaPruner):
         fig.savefig(out)
         plt.close(fig)
         np.save(out.replace('.jpg', '.npy'), w_abs_normalized)
+
+    def _log_down_mag_reg(self, w_abs, name):
+        step = self.total_iter
+        reg = self.reg[name].max().item()
+        mag = w_abs.data.cpu().numpy()
+        if name not in self.mag_reg_log:
+            values = [[step, reg, mag]]
+            log = {
+                'name': name,
+                'layer_index': self.layers[name].layer_index,
+                'shape': self.layers[name].size,
+                'values': values,
+            }
+            self.mag_reg_log[name] = log
+        else:
+            values = self.mag_reg_log[name]['values']
+            values.append([step, reg, mag])
         
     def _ada_reg(self, m, name):
+        layer_index = self.layers[name].layer_index
         w_abs = self.w_abs[name]
         n_wg = len(w_abs)
         pr = self._get_layer_pr(name)
@@ -209,6 +228,8 @@ class Pruner(MetaPruner):
         # plot w_abs distribution
         if self.total_iter % self.args.plot_interval == 0:
             self._plot_mag_ratio(w_abs, name)
+        if self.total_iter % self.args.print_interval == 0:
+            self._log_down_mag_reg(w_abs, name)
 
         # print to check magnitude ratio
         mag_ratio_now_before = 0
@@ -228,7 +249,6 @@ class Pruner(MetaPruner):
             self.pruned_wg[name] = pruned_wg
             picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[name]]
             common_ratio = len(picked_wg_in_common) / len(pruned_wg) if len(pruned_wg) else -1
-            layer_index = self.layers[name].layer_index
             n_finish_pick = len(self.iter_finish_pick)
             self.logprint("    [%d] Just finished picking (n_finish_pick = %d). %.2f in common chosen by L1 & AdaReg. Iter = %d" % 
                 (layer_index, n_finish_pick, common_ratio, self.total_iter))
@@ -239,6 +259,14 @@ class Pruner(MetaPruner):
                 if self._get_layer_pr(k) > 0 and (k not in self.iter_finish_pick):
                     self.all_layer_finish_pick = False
                     break
+        
+        # save mag_reg_log
+        if self.args.save_mag_reg_log and (self.total_iter % self.args.save_interval == 0 or \
+                name in self.iter_finish_pick):
+            out = pjoin(self.logger.log_path, "%d_mag_reg_log.npy" % layer_index)
+            np.save(out, self.mag_reg_log[name])
+            if self.all_layer_finish_pick:
+                exit(0)
         
         if self.args.AdaReg_only_picking or self.args.AdaReg_revive_kept:
             finish_update_reg = False
