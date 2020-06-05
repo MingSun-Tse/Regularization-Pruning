@@ -29,7 +29,7 @@ def get_std(w_abs):
 mag_reg_log_dir = sys.argv[1]
 net = sys.argv[2]
 npys = [x for x in os.listdir(mag_reg_log_dir) if x.endswith('.npy')]
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(6,5))
 for i in range(60): # plot in the order of layer index
     got_it = False
     for npy in npys:
@@ -101,10 +101,11 @@ for i in range(60): # plot in the order of layer index
         # marker=markers
         color=colors[stage - 1], # start with the blue color
         linestyle=linestyles[plot_ix],
-        linewidth=1.2)
+        linewidth=1.5)
     plot_ix_of_this_stage[str(stage)] += 1
 
-ax.legend(prop=dict(size=8), frameon=False) # fontsize
+fs = 8 if net == 'resnet56' else 10
+ax.legend(prop=dict(size=fs), frameon=False) # fontsize
 ax.grid(color='white')
 ax.set_facecolor('whitesmoke')
 
@@ -119,8 +120,8 @@ ax.xaxis.set_ticks_position('none')
 ax.yaxis.set_ticks_position('none')
 
 # set x ylabel
-ax.set_xlabel('Regularization factor $\lambda$')
-ax.set_ylabel('Normalized $L_1$-norm stddev')
+ax.set_xlabel('Regularization factor $\lambda$', fontsize=14)
+ax.set_ylabel('Normalized $L_1$-norm stddev', fontsize=14)
 
 out = pjoin(mag_reg_log_dir, 'mag_vs_reg.pdf')
 fig.savefig(out, bbox_inches='tight')
