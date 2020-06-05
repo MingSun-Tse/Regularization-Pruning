@@ -50,7 +50,7 @@ for i in range(60): # plot in the order of layer index
         stage = int(name.split("layer")[1].split('.')[0])
 
         # choose which layers to plot
-        key_words = ['.0.conv1', '.2.conv1', '.4.conv1', '.6.conv1', '.8.conv1'] # the layers that will be plotted
+        key_words = ['.0.conv1', '.2.conv1', '.4.conv1', '.6.conv1'] # the layers that will be plotted
         cond = [kw in name for kw in key_words]
         if any(cond):
             plot_this_layer = True
