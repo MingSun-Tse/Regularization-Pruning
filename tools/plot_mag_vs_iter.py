@@ -21,9 +21,10 @@ for npy in npys:
     reg  = values[:, 1]
     mag  = values[:, 2]
 
+    picked_steps = [0, 5000, 10000, 15000] if net in ['resnet34', 'resnet50'] else [0, 10000, 20000, 30000]
     for i in range(len(step)):
         s = step[i]
-        if s in [0, 5000, 10000, 15000]:
+        if s in picked_steps:
             fig, ax = plt.subplots(figsize=(6, 2))
             x = mag[i] / mag[i].max()
             ax.plot(x, color='b', linestyle='-')
