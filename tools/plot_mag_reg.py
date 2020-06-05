@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 
 markers = ['*', 'd', 'x', 'o']
-colors = ['b', 'r', 'k', 'g', 'orange']
+colors = ['b', 'r', 'k', 'g']
 linestyles = ['solid', 'dashed', 'dashdot', 'dotted']
 plot_ix_of_this_stage = {
     '0': 0,
@@ -92,18 +92,36 @@ for i in range(60): # plot in the order of layer index
     shape = log['shape']
     values = log['values']
     values = np.array(values)
-    step = values[:, 0]
-    reg = values[:, 1]
-    mag = values[:, 2]
+    step = values[:, 0][::3]
+    reg  = values[:, 1][::3]
+    mag  = values[:, 2][::3]
     mag_std = get_std(mag)
     plot_ix = plot_ix_of_this_stage[str(stage)]
     ax.plot(reg, mag_std, label=label,
         # marker=markers
-        color=colors[stage],
-        linestyle=linestyles[plot_ix])
+        color=colors[stage - 1], # start with the blue color
+        linestyle=linestyles[plot_ix],
+        linewidth=1.2)
     plot_ix_of_this_stage[str(stage)] += 1
 
-ax.legend()
+ax.legend(prop=dict(size=8), frameon=False) # fontsize
+ax.grid(color='white')
+ax.set_facecolor('whitesmoke')
+
+# remove axis line
+ax.spines['right'].set_visible(False)
+ax.spines['left'].set_visible(False)
+ax.spines['top'].set_visible(False)
+ax.spines['bottom'].set_visible(False)
+
+# remove tick but keep the values
+ax.xaxis.set_ticks_position('none')
+ax.yaxis.set_ticks_position('none')
+
+# set x ylabel
+ax.set_xlabel('Regularization factor $\lambda$')
+ax.set_ylabel('Normalized $L_1$-norm stddev')
+
 out = pjoin(mag_reg_log_dir, 'mag_vs_reg.pdf')
-fig.savefig(out)
+fig.savefig(out, bbox_inches='tight')
 plt.close(fig)
