@@ -45,15 +45,28 @@ for i in range(60): # plot in the order of layer index
     layer_index = log['layer_index']
 
     plot_this_layer = False
-    if net == 'resnet56':
+    if net in ['resnet56', 'resnet34']: # non-bottleneck block
         # get stage
         stage = int(name.split("layer")[1].split('.')[0])
-        key_words = ['.1.conv1', '.3.conv1', '.5.conv1', '.7.conv1'] # the layers that will be plotted
+
+        # choose which layers to plot
+        key_words = ['.0.conv1', '.2.conv1', '.4.conv1', '.6.conv1', '.8.conv1'] # the layers that will be plotted
         cond = [kw in name for kw in key_words]
         if any(cond):
             plot_this_layer = True
         label = name
     
+    if net == 'resnet50': # bottleneck block
+        # get stage
+        stage = int(name.split("layer")[1].split('.')[0])
+
+        # choose which layers to plot
+        key_words = ['.0.conv', '.2.conv'] # the layers that will be plotted
+        cond = [kw in name for kw in key_words]
+        if any(cond):
+            plot_this_layer = True
+        label = name
+
     if net == 'vgg19':
         # get stage
         if layer_index < 2:
@@ -74,14 +87,8 @@ for i in range(60): # plot in the order of layer index
         if any(cond):
             plot_this_layer = True
         label = 'layer %2d' % layer_index
-    
-    if net == 'resnet50':
-        pass
-    if net == 'resnet34':
-        pass
-    if not plot_this_layer: continue
 
-    
+    if not plot_this_layer: continue
     shape = log['shape']
     values = log['values']
     values = np.array(values)
