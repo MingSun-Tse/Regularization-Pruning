@@ -27,6 +27,7 @@ import torchvision.models as models
 
 # --- prune
 import copy
+import numpy as np
 from importlib import import_module
 from data import Data
 from logger import Logger
@@ -338,10 +339,7 @@ def main_worker(gpu, ngpus_per_node, args):
             num_workers=args.workers, pin_memory=True)
 
     if args.evaluate:
-        t1 = time.time()
         acc1, acc5 = validate(val_loader, model, criterion, args)
-        t2 = time.time()
-        logprint('test acc1 = {:.4f} acc5 = {:.4f} (time = {:.2f}s)'.format(acc1, acc5, t2-t1))
         return
 
     # --- prune
@@ -587,7 +585,8 @@ def validate(val_loader, model, criterion, args):
 
     # switch to evaluate mode
     model.eval()
-
+    
+    time_compute = []
     with torch.no_grad():
         end = time.time()
         for i, (images, target) in enumerate(val_loader):
@@ -596,7 +595,9 @@ def validate(val_loader, model, criterion, args):
             target = target.cuda(args.gpu, non_blocking=True)
 
             # compute output
+            t1 = time.time()
             output = model(images)
+            time_compute.append((time.time() - t1) / images.size(0))
             loss = criterion(output, target)
 
             # measure accuracy and record loss
@@ -616,7 +617,7 @@ def validate(val_loader, model, criterion, args):
         # logprint(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
         #       .format(top1=top1, top5=top5))
         # --- prune: commented because we will use another print outside 'validate'
-
+    logprint("time compute: %.4f ms" % (np.mean(time_compute)*1000))
     return top1.avg, top5.avg # --- prune: added returning top5 acc
 
 
