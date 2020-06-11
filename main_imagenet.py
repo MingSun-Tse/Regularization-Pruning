@@ -338,10 +338,6 @@ def main_worker(gpu, ngpus_per_node, args):
             batch_size=args.batch_size, shuffle=False,
             num_workers=args.workers, pin_memory=True)
 
-    if args.evaluate:
-        acc1, acc5 = validate(val_loader, model, criterion, args)
-        return
-
     # --- prune
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
     # so just before training, do pruning to obtain a new model.
@@ -460,7 +456,11 @@ def main_worker(gpu, ngpus_per_node, args):
             lr_schedule[epoch] = lr
         lr_scheduler = PresetLRScheduler(lr_schedule)
     # ---
-    
+
+    if args.evaluate:
+        acc1, acc5 = validate(val_loader, model, criterion, args)
+        return
+        
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
