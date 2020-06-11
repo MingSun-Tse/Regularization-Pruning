@@ -341,7 +341,7 @@ def main_worker(gpu, ngpus_per_node, args):
         t1 = time.time()
         acc1, acc5 = validate(val_loader, model, criterion, args)
         t2 = time.time()
-        logprint('test acc1 = %.4f acc5 = %.4f (time = %.2s)'.format(acc1, acc5, t2-t1))
+        logprint('test acc1 = {:.4f} acc5 = {:.4f} (time = {:.2f}s)'.format(acc1, acc5, t2-t1))
         return
 
     # --- prune
