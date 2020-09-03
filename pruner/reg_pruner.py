@@ -220,7 +220,7 @@ class Pruner(MetaPruner):
             elif self.args.wg == 'filter':
                 self.reg[name][self.kept_wg[name], :] = recover_reg
             if self.total_iter % self.args.print_interval == 0:
-                self.logprint("    Pushing more the pruned (reg = %.5f), bringing back the kept (reg = %.5f)" % 
+                self.logprint("    Pick done. Push more the pruned (reg = %.5f), bring back the kept (reg = %.5f)" % 
                     (reg_pruned.item(), recover_reg))
         else:
             self.reg[name] += self.args.weight_decay * self.args.reg_multiplier
@@ -272,7 +272,7 @@ class Pruner(MetaPruner):
             finish_update_reg = False
         else:
             cond0 = name in self.iter_finish_pick # finsihed picking
-            cond1 = self.hist_mag_ratio[name] >= 1000 \
+            cond1 = self.hist_mag_ratio[name] >= self.args.mag_ratio_limit \
                 or self.reg[name].max() > self.args.reg_upper_limit
             cond2 = mag_ratio_now_before > 0.9 # the kept has been brought back
             finish_update_reg = cond0 and cond1 and cond2
