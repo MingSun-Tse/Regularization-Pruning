@@ -33,6 +33,7 @@ from data import Data
 from logger import Logger
 from utils import get_n_params, get_n_flops, PresetLRScheduler
 from utils import strlist_to_list, check_path, parse_prune_ratio_vgg
+from utils import Timer
 from model import resnet_cifar10, vgg
 pjoin = os.path.join
 # ---
@@ -160,6 +161,7 @@ elif args.dataset == 'tinyimagenet':
 logger = Logger(args)
 logprint = logger.log_printer
 accprint = logger.log_printer.accprint
+timer = Timer(args.epochs)
 # ---
 
 best_acc1 = 0
@@ -503,6 +505,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         accprint("Acc1 = %.4f Acc5 = %.4f Epoch %d (after update) lr %s (Best Acc1 %.4f @ Epoch %d)" % 
             (acc1, acc5, epoch, lr, best_acc1, best_acc1_epoch))
+        logprint('Predicted finish time: %s' % timer())
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
