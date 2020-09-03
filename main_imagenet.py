@@ -115,7 +115,7 @@ parser.add_argument('--skip_layers', type=str, default="[]", help="layers not to
 parser.add_argument('--batch_size_prune', type=int, default=64, help="batch size when pruning")
 parser.add_argument('--update_reg_interval', type=int, default=1)
 parser.add_argument('--stabilize_reg_interval', type=int, default=20000)
-parser.add_argument('--plot_interval', type=int, default=100)
+parser.add_argument('--plot_interval', type=int, default=100000000)
 parser.add_argument('--save_interval', type=int, default=2000, help="the interval to save model")
 parser.add_argument('--reg_multiplier', type=float, default=1, help="each time the reg increases by 'reg_multiplier * wd'")
 parser.add_argument('--copy_bn_w', action="store_true")
