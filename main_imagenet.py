@@ -56,7 +56,7 @@ parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
+parser.add_argument('-b', '--batch-size', '--batch_size', default=256, type=int,
                     metavar='N',
                     help='mini-batch size (default: 256), this is the total '
                          'batch size of all GPUs on the current node when '
@@ -130,7 +130,7 @@ parser.add_argument('--block_loss_grad', action="store_true", help="block the gr
 parser.add_argument('--save_mag_reg_log', action="store_true", help="save log of L1-norm of filters wrt reg")
 parser.add_argument('--reg_upper_limit', type=float, default=1.5)
 parser.add_argument('--reg_upper_limit_pick', type=float, default=0.5)
-parser.add_argument('--mag_ratio_limit', type=float, default=10)
+parser.add_argument('--mag_ratio_limit', type=float, default=1000)
 parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
 parser.add_argument('--pick_pruned_interval', type=int, default=1, help="the interval to pick pruned in AdaReg")
 parser.add_argument('--pr_ratio_file', type=str, default=None)
