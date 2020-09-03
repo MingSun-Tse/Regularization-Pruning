@@ -351,7 +351,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 train_dataset, batch_size=args.batch_size_prune, shuffle=(train_sampler is None),
                 num_workers=args.workers, pin_memory=True, sampler=train_sampler)
         else:
-            train_loader_prune = train_loader
+            train_loader_prune = loader.train_loader_prune
 
         # get the original unpruned model statistics
         n_params_original = get_n_params(model)
@@ -463,7 +463,8 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.evaluate:
         acc1, acc5 = validate(val_loader, model, criterion, args)
         return
-        
+    
+    # finetune
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
