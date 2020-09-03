@@ -5,6 +5,7 @@ import os
 import copy
 import time
 import numpy as np
+import pickle
 from pruner import MetaPruner
 from utils import plot_weights_heatmap
 import math
@@ -470,6 +471,13 @@ class Pruner(MetaPruner):
                 
                 if self.args.AdaReg_only_picking and self.all_layer_finish_pick:
                     self.logprint("AdaReg just finished picking for all layers. Resume original model and switch to IncReg. Iter = %d" % total_iter)
+                    
+                    # save picked wg
+                    pkl_path = os.path.join(self.logger.log_path, 'picked_wg.pkl')
+                    with open(pkl_path, "wb" ) as f:
+                        pickle.dump(self.pruned_wg, f)
+                    exit(0)
+                    
                     # set to IncReg method
                     self.model = self.original_model # reload the original model
                     self.optimizer = optim.SGD(self.model.parameters(), 
