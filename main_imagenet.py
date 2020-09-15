@@ -483,7 +483,7 @@ def main_worker(gpu, ngpus_per_node, args):
         train(train_loader, model, criterion, optimizer, epoch, args)
 
         # --- prune: check weights magnitude
-        if args.method.endswith("Reg"):
+        if args.method.endswith("Reg") and 'pruner' in locals():
             for name, m in model.named_modules():
                 if name in pruner.reg:
                     ix = pruner.layers[name].layer_index
