@@ -1,0 +1,7 @@
+*.pyc
+.script_history
+Debug_Dir
+Experiments
+data/cifar10*
+data/mnist
+
