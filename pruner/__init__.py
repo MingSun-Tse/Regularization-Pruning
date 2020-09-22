@@ -46,8 +46,9 @@ class MetaPruner:
         self.model = model
         self.args = args
         self.logger = logger
-        self.logprint = logger.log_printer
-        self.accprint = logger.log_printer.accprint 
+        self.logprint = logger.log_printer.logprint
+        self.accprint = logger.log_printer.accprint
+        self.netprint = logger.log_printer.netprint
         self.test = lambda net: runner.test(runner.test_loader, net, runner.criterion, runner.args)
         self.train_loader = runner.train_loader
         self.criterion = runner.criterion

@@ -103,9 +103,9 @@ class Pruner(MetaPruner):
         time_span = 100
         if order.size(0) - interval < 0:
             return
-
+       
         begin = min(order.size(0) - interval, time_span)
-        order_diff = (order[-begin : 0 : interval] - order[-begin-interval : -interval : interval]).abs().float().mean().item()
+        order_diff = (order[-begin : : interval] - order[-begin-interval : -interval : interval]).abs().float().mean().item()
 
         wg_pruned_diff = []
         for k in range(-begin, 0, interval):
@@ -220,22 +220,36 @@ class Pruner(MetaPruner):
         if self.total_iter % self.args.print_interval == 0:
             self._log_down_mag_reg(w_abs, name)
         
-        # save order and check its stability
-        if not hasattr(self, 'order_by_L1'):
-            self.order_by_L1 = {}
-            self.wg_preprune = {}
-        order = w_abs.argsort().argsort().unsqueeze(0)
-        n_pruned = min(math.ceil(pr * n_wg), n_wg - 1) # do not prune all
-        wg_pruned = w_abs.argsort()[:n_pruned].unsqueeze(0)
-        if name in self.order_by_L1:
-            self.order_by_L1[name] = torch.cat([self.order_by_L1[name], order], dim=0)
-            self.wg_preprune[name] = torch.cat([self.wg_preprune[name], wg_pruned], dim=0)
-        else:
-            self.order_by_L1[name] = order
-            self.wg_preprune[name] = wg_pruned
-        if self.total_iter % self.args.print_interval == 0:
-            self._check_order_stability(name)
-        
+        # save order
+        # if not hasattr(self, 'order_by_L1'):
+            # self.order_by_L1 = {}
+            # self.wg_preprune = {} # deprecated: dict costs too much memory and seriously slow down training
+        # if name in self.order_by_L1:
+        #     self.order_by_L1[name] = torch.cat([self.order_by_L1[name], order], dim=0)
+        #     self.wg_preprune[name] = torch.cat([self.wg_preprune[name], wg_pruned], dim=0)
+        # else:
+        #     self.order_by_L1[name] = order
+        #     self.wg_preprune[name] = wg_pruned
+        if self.total_iter % self.args.update_reg_interval == 0:
+            if not hasattr(self, 'order_log'):
+                self.order_log = open('%s/order_log.txt' % self.logger.log_path, 'w+')
+
+            order = w_abs.argsort().argsort()
+            n_pruned = min(math.ceil(pr * n_wg), n_wg - 1)
+            wg_pruned = w_abs.argsort()[:n_pruned]
+            
+            order = [str(x.item()) for x in order] # for each wg, its ranking
+            wg_pruned = [str(x.item()) for x in wg_pruned]
+
+            logtmp = ' '.join(order)
+            logtmp = 'Iter %d Layer#%d %s order_by_L1 %s' % (self.total_iter, layer_index, name, logtmp)
+            print(logtmp, file=self.order_log)
+
+            logtmp = ' '.join(wg_pruned)
+            logtmp = 'Iter %d Layer#%d %s wg_preprune %s' % (self.total_iter, layer_index, name, logtmp)
+            print(logtmp, file=self.order_log, flush=True)
+            
+
         # print to check magnitude ratio
         mag_ratio_now_before = 0
         if name in self.iter_finish_pick:
@@ -308,14 +322,14 @@ class Pruner(MetaPruner):
                 elif self.args.method == "AdaReg":
                     finish_update_reg = self._ada_reg(m, name)
                 else:
-                    self.logprint("Wrong 'method'. Please check.")
+                    self.logprint("Wrong 'method', please check.")
                     exit(1)
 
                 # check prune state
                 if finish_update_reg:
                     # after 'update_reg' stage, keep the reg to stabilize weight magnitude
                     self.iter_update_reg_finished[name] = self.total_iter
-                    self.logprint("    [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
+                    self.logprint("    [%d] just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
 
                     # check if all layers finish 'update_reg'
                     self.prune_state = "stabilize_reg"
@@ -331,7 +345,7 @@ class Pruner(MetaPruner):
                     
                 # after reg is updated, print to check
                 if self.total_iter % self.args.print_interval == 0:
-                    self.logprint("    Reg status: min = %.5f ave = %.5f max = %.5f" % 
+                    self.logprint("    reg_status: min = %.5f ave = %.5f max = %.5f" % 
                                 (self.reg[name].min(), self.reg[name].mean(), self.reg[name].max()))
 
     def _apply_reg(self):
