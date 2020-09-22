@@ -92,6 +92,29 @@ class Pruner(MetaPruner):
     def _get_volatility(self, ranking):
         return np.max(ranking[-10:]) - np.min(ranking[-10:])
     
+    def _get_set_diff(self, x, y):
+        diff = [i for i in x if i not in y]
+        return len(diff) * 1.0 / len(x)
+
+    def _check_order_stability(self, name):
+        order = self.order_by_L1[name]
+        wg_pruned = self.wg_preprune[name]
+        interval = 2
+        time_span = 100
+        if order.size(0) - interval < 0:
+            return
+
+        begin = min(order.size(0) - interval, time_span)
+        order_diff = (order[-begin : 0 : interval] - order[-begin-interval : -interval : interval]).abs().float().mean().item()
+
+        wg_pruned_diff = []
+        for k in range(-begin, 0, interval):
+            v = self._get_set_diff(wg_pruned[k], wg_pruned[k-interval])
+            wg_pruned_diff.append(v)
+        wg_pruned_diff = np.mean(wg_pruned_diff)
+        self.logprint('    order_diff %.4f' % (order_diff))
+        self.logprint('    wg_pruned_diff %.4f' % (wg_pruned_diff))
+    
     def _update_mag_ratio(self, m, name, w_abs, pruned=None):
         if type(pruned) == type(None):
             pruned = self.pruned_wg[name]
@@ -111,8 +134,8 @@ class Pruner(MetaPruner):
         # print
         mag_ratio_now_before = ave_mag_kept / self.original_kept_w_mag[name]
         if self.total_iter % self.args.print_interval == 0:
-            self.logprint("    Mag ratio = %.4f (%.4f)" % (mag_ratio, self.hist_mag_ratio[name]))
-            self.logprint("    For kept weights, original_kept_w_mag: %.6f, now: %.6f (%.4f)" % 
+            self.logprint("    mag_ratio %.4f mag_ratio_momentum %.4f" % (mag_ratio, self.hist_mag_ratio[name]))
+            self.logprint("    for kept weights, original_kept_w_mag %.6f, now_kept_w_mag %.6f ratio_now_over_original %.4f" % 
                 (self.original_kept_w_mag[name], ave_mag_kept, mag_ratio_now_before))
         return mag_ratio_now_before
 
@@ -154,41 +177,6 @@ class Pruner(MetaPruner):
             if self.hist_mag_ratio[k] < 1000:
                 finish_update_reg = False
         return finish_update_reg or self.reg[name].max() > self.args.reg_upper_limit
-
-    def _plot_mag_ratio(self, w_abs, name):
-        fig, ax = plt.subplots()
-        max_ = w_abs.max().item()
-        w_abs_normalized = (w_abs / max_).data.cpu().numpy()
-        ax.plot(w_abs_normalized)
-        ax.set_ylim([0, 1])
-        ax.set_xlabel('filter index')
-        ax.set_ylabel('relative L1-norm ratio')
-        layer_index = self.layers[name].layer_index
-        shape = self.layers[name].size
-        ax.set_title("layer %d iter %d shape %s\n(max = %s)" 
-            % (layer_index, self.total_iter, shape, max_))
-        out = pjoin(self.logger.logplt_path, "%d_iter%d_w_abs_dist.jpg" % 
-                                (layer_index, self.total_iter))
-        fig.savefig(out)
-        plt.close(fig)
-        np.save(out.replace('.jpg', '.npy'), w_abs_normalized)
-
-    def _log_down_mag_reg(self, w_abs, name):
-        step = self.total_iter
-        reg = self.reg[name].max().item()
-        mag = w_abs.data.cpu().numpy()
-        if name not in self.mag_reg_log:
-            values = [[step, reg, mag]]
-            log = {
-                'name': name,
-                'layer_index': self.layers[name].layer_index,
-                'shape': self.layers[name].size,
-                'values': values,
-            }
-            self.mag_reg_log[name] = log
-        else:
-            values = self.mag_reg_log[name]['values']
-            values.append([step, reg, mag])
         
     def _ada_reg(self, m, name):
         layer_index = self.layers[name].layer_index
@@ -231,7 +219,23 @@ class Pruner(MetaPruner):
             self._plot_mag_ratio(w_abs, name)
         if self.total_iter % self.args.print_interval == 0:
             self._log_down_mag_reg(w_abs, name)
-
+        
+        # save order and check its stability
+        if not hasattr(self, 'order_by_L1'):
+            self.order_by_L1 = {}
+            self.wg_preprune = {}
+        order = w_abs.argsort().argsort().unsqueeze(0)
+        n_pruned = min(math.ceil(pr * n_wg), n_wg - 1) # do not prune all
+        wg_pruned = w_abs.argsort()[:n_pruned].unsqueeze(0)
+        if name in self.order_by_L1:
+            self.order_by_L1[name] = torch.cat([self.order_by_L1[name], order], dim=0)
+            self.wg_preprune[name] = torch.cat([self.wg_preprune[name], wg_pruned], dim=0)
+        else:
+            self.order_by_L1[name] = order
+            self.wg_preprune[name] = wg_pruned
+        if self.total_iter % self.args.print_interval == 0:
+            self._check_order_stability(name)
+        
         # print to check magnitude ratio
         mag_ratio_now_before = 0
         if name in self.iter_finish_pick:
@@ -507,3 +511,38 @@ class Pruner(MetaPruner):
                     total_time = t2 - t1
                     self.logprint("speed = %.4f iter/s" % (self.args.print_interval / total_time))
                     t1 = t2
+
+    def _plot_mag_ratio(self, w_abs, name):
+        fig, ax = plt.subplots()
+        max_ = w_abs.max().item()
+        w_abs_normalized = (w_abs / max_).data.cpu().numpy()
+        ax.plot(w_abs_normalized)
+        ax.set_ylim([0, 1])
+        ax.set_xlabel('filter index')
+        ax.set_ylabel('relative L1-norm ratio')
+        layer_index = self.layers[name].layer_index
+        shape = self.layers[name].size
+        ax.set_title("layer %d iter %d shape %s\n(max = %s)" 
+            % (layer_index, self.total_iter, shape, max_))
+        out = pjoin(self.logger.logplt_path, "%d_iter%d_w_abs_dist.jpg" % 
+                                (layer_index, self.total_iter))
+        fig.savefig(out)
+        plt.close(fig)
+        np.save(out.replace('.jpg', '.npy'), w_abs_normalized)
+
+    def _log_down_mag_reg(self, w_abs, name):
+        step = self.total_iter
+        reg = self.reg[name].max().item()
+        mag = w_abs.data.cpu().numpy()
+        if name not in self.mag_reg_log:
+            values = [[step, reg, mag]]
+            log = {
+                'name': name,
+                'layer_index': self.layers[name].layer_index,
+                'shape': self.layers[name].size,
+                'values': values,
+            }
+            self.mag_reg_log[name] = log
+        else:
+            values = self.mag_reg_log[name]['values']
+            values.append([step, reg, mag])
