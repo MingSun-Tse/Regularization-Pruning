@@ -4,4 +4,5 @@ Debug_Dir
 Experiments
 data/cifar10*
 data/mnist
+data/imagenet
 
