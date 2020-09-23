@@ -89,32 +89,6 @@ class Pruner(MetaPruner):
             self.logprint("Wrong pr. Please check.")
             exit(1)
     
-    def _get_volatility(self, ranking):
-        return np.max(ranking[-10:]) - np.min(ranking[-10:])
-    
-    def _get_set_diff(self, x, y):
-        diff = [i for i in x if i not in y]
-        return len(diff) * 1.0 / len(x)
-
-    def _check_order_stability(self, name):
-        order = self.order_by_L1[name]
-        wg_pruned = self.wg_preprune[name]
-        interval = 2
-        time_span = 100
-        if order.size(0) - interval < 0:
-            return
-       
-        begin = min(order.size(0) - interval, time_span)
-        order_diff = (order[-begin : : interval] - order[-begin-interval : -interval : interval]).abs().float().mean().item()
-
-        wg_pruned_diff = []
-        for k in range(-begin, 0, interval):
-            v = self._get_set_diff(wg_pruned[k], wg_pruned[k-interval])
-            wg_pruned_diff.append(v)
-        wg_pruned_diff = np.mean(wg_pruned_diff)
-        self.logprint('    order_diff %.4f' % (order_diff))
-        self.logprint('    wg_pruned_diff %.4f' % (wg_pruned_diff))
-    
     def _update_mag_ratio(self, m, name, w_abs, pruned=None):
         if type(pruned) == type(None):
             pruned = self.pruned_wg[name]
