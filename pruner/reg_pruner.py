@@ -141,9 +141,9 @@ class Pruner(MetaPruner):
         self._update_mag_ratio(m, name, self.w_abs[name])
         
         if self.args.wg == "channel":
-            self.reg[name][:, pruned] += self.args.weight_decay * self.args.reg_multiplier
+            self.reg[name][:, pruned] += self.args.reg_granularity_pick
         elif self.args.wg == "filter":
-            self.reg[name][pruned, :] += self.args.weight_decay * self.args.reg_multiplier
+            self.reg[name][pruned, :] += self.args.reg_granularity_pick
         
         # when all layers are pushed hard enough, stop
         finish_update_reg = True
@@ -166,13 +166,15 @@ class Pruner(MetaPruner):
         if name in self.iter_finish_pick:
             # for pruned weights, push them more
             if self.args.wg == 'channel':
-                self.reg[name][:, self.pruned_wg[name]] += self.args.weight_decay * self.args.reg_multiplier
-                reg_pruned = self.reg[name][:, self.pruned_wg[name]].max()
+                self.reg[name][:, self.pruned_wg[name]] += self.args.reg_granularity_prune
+                self.reg[name][:, self.kept_wg[name]] = 0
             elif self.args.wg == 'filter':
-                self.reg[name][self.pruned_wg[name], :] += self.args.weight_decay * self.args.reg_multiplier
-                reg_pruned = self.reg[name][self.pruned_wg[name], :].max()
+                self.reg[name][self.pruned_wg[name], :] += self.args.reg_granularity_prune
+                self.reg[name][self.kept_wg[name], :] = 0
 
             # for kept weights, bring them back
+            # 09/22 update: It seems negative reg is a bad idea to bring back magnitude.
+            '''
             current_w_mag = w_abs[self.kept_wg[name]].mean()
             recover_reg = (current_w_mag / self.original_kept_w_mag[name] - 1).item() \
                 * self.args.weight_decay * self.args.reg_multiplier * 10
@@ -182,11 +184,13 @@ class Pruner(MetaPruner):
                 self.reg[name][:, self.kept_wg[name]] = recover_reg
             elif self.args.wg == 'filter':
                 self.reg[name][self.kept_wg[name], :] = recover_reg
+            '''
             if self.total_iter % self.args.print_interval == 0:
-                self.logprint("    Pick done. Push more the pruned (reg = %.5f), bring back the kept (reg = %.5f)" % 
-                    (reg_pruned.item(), recover_reg))
+                self.logprint("    prune stage, push the pruned (reg = %.5f) to zero; for kept weights, reg = 0" 
+                    % (self.reg[name].max().item()))
+            
         else:
-            self.reg[name] += self.args.weight_decay * self.args.reg_multiplier
+            self.reg[name] += self.args.reg_granularity_pick
 
         # plot w_abs distribution
         if self.total_iter % self.args.plot_interval == 0:
@@ -204,7 +208,7 @@ class Pruner(MetaPruner):
         # else:
         #     self.order_by_L1[name] = order
         #     self.wg_preprune[name] = wg_pruned
-        if self.total_iter % self.args.update_reg_interval == 0:
+        if self.args.save_order_log and self.total_iter % self.args.update_reg_interval == 0:
             if not hasattr(self, 'order_log'):
                 self.order_log = open('%s/order_log.txt' % self.logger.log_path, 'w+')
 
@@ -243,8 +247,13 @@ class Pruner(MetaPruner):
             picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[name]]
             common_ratio = len(picked_wg_in_common) / len(pruned_wg) if len(pruned_wg) else -1
             n_finish_pick = len(self.iter_finish_pick)
-            self.logprint("    [%d] Just finished picking (n_finish_pick = %d). %.2f in common chosen by L1 & AdaReg. Iter = %d" % 
+            self.logprint("    [%d] just finished pick (n_finish_pick = %d). %.2f in common chosen by L1 & AdaReg. Iter = %d" % 
                 (layer_index, n_finish_pick, common_ratio, self.total_iter))
+            
+            # re-scale the weights to recover the response magnitude
+            factor = self.original_w_mag[name] / m.weight.abs().mean()
+            m.weight.data.mul_(factor)
+            self.logprint('    rescale weight by %.4f' % factor.item())
 
             # check if all layers finish picking
             self.all_layer_finish_pick = True
@@ -267,8 +276,8 @@ class Pruner(MetaPruner):
             cond0 = name in self.iter_finish_pick # finsihed picking
             cond1 = self.hist_mag_ratio[name] >= self.args.mag_ratio_limit \
                 or self.reg[name].max() > self.args.reg_upper_limit
-            cond2 = mag_ratio_now_before > 0.9 # the kept has been brought back
-            finish_update_reg = cond0 and cond1 and cond2
+            # cond2 = mag_ratio_now_before > 0.9 # the kept has been brought back, deprecated!
+            finish_update_reg = cond0 and cond1
         return finish_update_reg
 
     def _update_reg(self):
@@ -303,7 +312,7 @@ class Pruner(MetaPruner):
                 if finish_update_reg:
                     # after 'update_reg' stage, keep the reg to stabilize weight magnitude
                     self.iter_update_reg_finished[name] = self.total_iter
-                    self.logprint("    [%d] just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
+                    self.logprint("==> [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
 
                     # check if all layers finish 'update_reg'
                     self.prune_state = "stabilize_reg"
@@ -314,7 +323,7 @@ class Pruner(MetaPruner):
                                 break
                     if self.prune_state == "stabilize_reg":
                         self.iter_stabilize_reg = self.total_iter
-                        self.logprint("    All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
+                        self.logprint("==> All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
                         self._save_model(mark='just_finished_update_reg')
                     
                 # after reg is updated, print to check
