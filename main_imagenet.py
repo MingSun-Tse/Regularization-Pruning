@@ -161,6 +161,7 @@ elif args.dataset == 'tinyimagenet':
 logger = Logger(args)
 logprint = logger.log_printer
 accprint = logger.log_printer.accprint
+netprint = logger.log_printer.netprint
 timer = Timer(args.epochs)
 # ---
 
@@ -235,7 +236,7 @@ def main_worker(gpu, ngpus_per_node, args):
         model = eval('vgg.%s' % args.arch)()
     else:
         raise NotImplementedError
-
+    
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
@@ -345,6 +346,9 @@ def main_worker(gpu, ngpus_per_node, args):
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
     # so just before training, do pruning to obtain a new model.
     if args.method:
+        # print arch
+        netprint(model)
+
         if args.dataset == 'imagenet':
             # imagenet training costs too much time, so we use a smaller batch size for pruning training
             train_loader_prune = torch.utils.data.DataLoader(
