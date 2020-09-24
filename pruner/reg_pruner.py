@@ -439,18 +439,6 @@ class Pruner(MetaPruner):
                             w_abs_sum += m.weight.abs().sum()
                             w_num_sum += m.weight.numel()
 
-                            # w magnitude print
-                            # w_abs_mean = m.weight.abs().mean(dim=[2, 3]) # [N, C]
-                            # logtmp1 = ""
-                            # for x in torch.diag(w_abs_mean)[:20]:
-                            #     logtmp1 += "{:8.6f} ".format(x.item())  
-                            # logtmp2 = ""
-                            # for x in torch.diag(self.reg[name])[:20]:
-                            #     logtmp2 += "{:8.6f} ".format(x.item())
-                            # self.logprint("{:2d}: {}".format(cnt_m, logtmp2))
-                            # self.logprint("  : {}".format(logtmp1))
-                            # self.logprint("")
-
                     _, predicted = y_.max(1)
                     correct = predicted.eq(targets).sum().item()
                     train_acc = correct / targets.size(0)
