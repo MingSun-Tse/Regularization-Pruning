@@ -141,9 +141,9 @@ class Pruner(MetaPruner):
         self._update_mag_ratio(m, name, self.w_abs[name])
         
         if self.args.wg == "channel":
-            self.reg[name][:, pruned] += self.args.reg_granularity_pick
+            self.reg[name][:, pruned] += self.args.reg_granularity_prune
         elif self.args.wg == "filter":
-            self.reg[name][pruned, :] += self.args.reg_granularity_pick
+            self.reg[name][pruned, :] += self.args.reg_granularity_prune
         
         # when all layers are pushed hard enough, stop
         finish_update_reg = True
