@@ -227,7 +227,6 @@ class Pruner(MetaPruner):
             logtmp = 'Iter %d Layer#%d %s wg_preprune %s' % (self.total_iter, layer_index, name, logtmp)
             print(logtmp, file=self.order_log, flush=True)
             
-
         # print to check magnitude ratio
         mag_ratio_now_before = 0
         if name in self.iter_finish_pick:
@@ -414,6 +413,7 @@ class Pruner(MetaPruner):
                         % (total_iter, self.prune_state, self.args.method) + "-"*40)
                     
                 # forward
+                self.model.train()
                 y_ = self.model(inputs)
                 
                 if self.prune_state == "update_reg" and total_iter % self.args.update_reg_interval == 0:

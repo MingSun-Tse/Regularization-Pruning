@@ -272,8 +272,18 @@ def main_worker(gpu, ngpus_per_node, args):
     # --- prune
     if args.base_model_path:
         pretrained_path = args.base_model_path
-        model.load_state_dict(torch.load(pretrained_path)['state_dict'])
+        state_dict = torch.load(pretrained_path)['state_dict']
+        from collections import OrderedDict
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            if 'num_batches_tracked' in k:
+                # new_state_dict[k] = v * 0
+                pass
+            else:
+                new_state_dict[k] = v
+        model.load_state_dict(new_state_dict)
         logprint("==> Load pretrained model successfully: '%s'" % pretrained_path)
+        
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
