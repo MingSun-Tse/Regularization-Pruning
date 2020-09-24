@@ -127,9 +127,9 @@ class Pruner(MetaPruner):
         self._update_mag_ratio(m, name, self.w_abs[name])
 
         if self.args.wg == "channel":
-            self.reg[name][:, pruned] = 1e4 * self.args.weight_decay * self.args.reg_multiplier
+            self.reg[name][:, pruned] = self.args.reg_granularity_prune
         elif self.args.wg == "filter":
-            self.reg[name][pruned, :] = 1e4 * self.args.weight_decay * self.args.reg_multiplier
+            self.reg[name][pruned, :] = self.args.reg_granularity_prune
 
         finish_update_reg = self.total_iter > 10000
         return finish_update_reg
