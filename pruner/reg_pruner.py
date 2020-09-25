@@ -164,13 +164,14 @@ class Pruner(MetaPruner):
             return True
         
         if name in self.iter_finish_pick:
+            recover_reg = self.args.reg_granularity_recover
             # for pruned weights, push them more
             if self.args.wg == 'channel':
                 self.reg[name][:, self.pruned_wg[name]] += self.args.reg_granularity_prune
-                self.reg[name][:, self.kept_wg[name]] = 0
+                self.reg[name][:, self.kept_wg[name]] = recover_reg
             elif self.args.wg == 'filter':
                 self.reg[name][self.pruned_wg[name], :] += self.args.reg_granularity_prune
-                self.reg[name][self.kept_wg[name], :] = 0
+                self.reg[name][self.kept_wg[name], :] = recover_reg
 
             # for kept weights, bring them back
             # 09/22 update: It seems negative reg is a bad idea to bring back magnitude.
@@ -186,8 +187,8 @@ class Pruner(MetaPruner):
                 self.reg[name][self.kept_wg[name], :] = recover_reg
             '''
             if self.total_iter % self.args.print_interval == 0:
-                self.logprint("    prune stage, push the pruned (reg = %.5f) to zero; for kept weights, reg = 0" 
-                    % (self.reg[name].max().item()))
+                self.logprint("    prune stage, push the pruned (reg = %.5f) to zero; for kept weights, reg = %.5f" 
+                    % (self.reg[name].max().item(), recover_reg))
             
         else:
             self.reg[name] += self.args.reg_granularity_pick

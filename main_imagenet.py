@@ -120,6 +120,7 @@ parser.add_argument('--save_interval', type=int, default=2000, help="the interva
 parser.add_argument('--reg_multiplier', type=float, default=1, help="each time the reg increases by 'reg_multiplier * wd'")
 parser.add_argument('--reg_granularity_prune', type=float, default=1e-4)
 parser.add_argument('--reg_granularity_pick', type=float, default=1e-4)
+parser.add_argument('--reg_granularity_recover', type=float, default=-2e-4)
 parser.add_argument('--copy_bn_w', action="store_true")
 parser.add_argument('--copy_bn_b', action="store_true")
 parser.add_argument('--resume_path', type=str, default=None, help="supposed to replace the original 'resume' feature")
