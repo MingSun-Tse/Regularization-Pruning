@@ -251,9 +251,9 @@ class Pruner(MetaPruner):
                 (layer_index, n_finish_pick, common_ratio, self.total_iter))
             
             # re-scale the weights to recover the response magnitude
-            factor = self.original_w_mag[name] / m.weight.abs().mean()
-            m.weight.data.mul_(factor)
-            self.logprint('    rescale weight by %.4f' % factor.item())
+            # factor = self.original_w_mag[name] / m.weight.abs().mean()
+            # m.weight.data.mul_(factor)
+            # self.logprint('    rescale weight by %.4f' % factor.item())
 
             # check if all layers finish picking
             self.all_layer_finish_pick = True
