@@ -606,6 +606,8 @@ def validate(val_loader, model, criterion, args):
         [batch_time, losses, top1, top5],
         prefix='Test: ')
 
+    train_state = model.training()
+
     # switch to evaluate mode
     model.eval()
     
@@ -641,6 +643,10 @@ def validate(val_loader, model, criterion, args):
         #       .format(top1=top1, top5=top5))
         # --- prune: commented because we will use another print outside 'validate'
     logprint("time compute: %.4f ms" % (np.mean(time_compute)*1000))
+
+    # change back to original model state if necessary
+    if train_state:
+        model.train()
     return top1.avg, top5.avg # --- prune: added returning top5 acc
 
 
