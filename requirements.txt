@@ -7,4 +7,3 @@ option==1.0.1
 Pillow==7.2.0
 PyYAML==5.3.1
 torchsummary==1.5.1
-uutils==0.0.3
