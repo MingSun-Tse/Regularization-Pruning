@@ -606,7 +606,7 @@ def validate(val_loader, model, criterion, args):
         [batch_time, losses, top1, top5],
         prefix='Test: ')
 
-    train_state = model.training()
+    train_state = model.training
 
     # switch to evaluate mode
     model.eval()
