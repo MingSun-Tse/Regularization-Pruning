@@ -31,7 +31,7 @@ class Pruner(MetaPruner):
         self.all_layer_finish_pick = False
         self.w_abs = {}
         self.mag_reg_log = {}
-        if self.args.AdaReg_only_picking:
+        if self.args.__dict__.get('AdaReg_only_picking'):
             self.original_model = copy.deepcopy(self.model)
         
         # prune_init, to determine the pruned weights
@@ -270,7 +270,7 @@ class Pruner(MetaPruner):
             if self.all_layer_finish_pick:
                 exit(0)
         
-        if self.args.AdaReg_only_picking or self.args.AdaReg_revive_kept:
+        if self.args.__dict__.get('AdaReg_only_picking') or self.args.__dict__.get('AdaReg_revive_kept'):
             finish_update_reg = False
         else:
             cond0 = name in self.iter_finish_pick # finsihed picking
@@ -347,7 +347,7 @@ class Pruner(MetaPruner):
         self.model = state['model'].cuda()
         self.model.load_state_dict(state['state_dict'])
         self.optimizer = optim.SGD(self.model.parameters(), 
-                                lr=self.args.lr_pick if self.args.AdaReg_only_picking else self.args.lr_prune, 
+                                lr=self.args.lr_pick if self.args.__dict__.get('AdaReg_only_picking') else self.args.lr_prune, 
                                 momentum=self.args.momentum,
                                 weight_decay=self.args.weight_decay)
         self.optimizer.load_state_dict(state['optimizer'])
@@ -376,7 +376,7 @@ class Pruner(MetaPruner):
     def prune(self):
         self.model = self.model.train()
         self.optimizer = optim.SGD(self.model.parameters(), 
-                                lr=self.args.lr_pick if self.args.AdaReg_only_picking else self.args.lr_prune, 
+                                lr=self.args.lr_pick if self.args.__dict__.get('AdaReg_only_picking') else self.args.lr_prune,
                                 momentum=self.args.momentum,
                                 weight_decay=self.args.weight_decay)
         
@@ -459,7 +459,7 @@ class Pruner(MetaPruner):
                 #             plot_weights_heatmap(m.weight.mean(dim=[2, 3]), out_path1)
                 #             plot_weights_heatmap(self.reg[name], out_path2)
                 
-                if self.args.AdaReg_only_picking and self.all_layer_finish_pick:
+                if self.args.__dict__.get('AdaReg_only_picking') and self.all_layer_finish_pick:
                     self.logprint("AdaReg just finished picking for all layers. Resume original model and switch to IncReg. Iter = %d" % total_iter)
                     
                     # save picked wg
@@ -481,7 +481,7 @@ class Pruner(MetaPruner):
                         self.reg[k] = torch.zeros_like(self.reg[k]).cuda()
                     self.hist_mag_ratio = {}
                 
-                if self.args.AdaReg_revive_kept and self.all_layer_finish_pick:
+                if self.args.__dict__.get('AdaReg_revive_kept') and self.all_layer_finish_pick:
                     self._prune_and_build_new_model()
                     self.logprint("AdaReg just finished picking for all layers. Pruned and go to 'finetune'. Iter = %d" % total_iter)
                     return copy.deepcopy(self.model)
