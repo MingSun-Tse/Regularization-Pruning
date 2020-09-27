@@ -1,9 +1,9 @@
 '''
-    This code is based on the official PyTorch ImageNet training example 'main.py'. Commit ID: 69d2798, 2020/04/23.
+    This code is based on the official PyTorch ImageNet training example 'main.py'. Commit ID: 69d2798, 04/23/2020.
     URL: https://github.com/pytorch/examples/tree/master/imagenet
     All modified parts will be indicated by '--- prune' mark.
     We will do our best to maintain back compatibility.
-    Questions to @mingsun-tse (wang.huan@husky.neu.edu).
+    Questions to @mingsun-tse (wang.huan@northeastern.edu).
 '''
 import argparse
 import os
@@ -31,146 +31,19 @@ import numpy as np
 from importlib import import_module
 from data import Data
 from logger import Logger
-from utils import get_n_params, get_n_flops, PresetLRScheduler
-from utils import strlist_to_list, check_path, parse_prune_ratio_vgg
-from utils import Timer
+from utils import get_n_params, get_n_flops, PresetLRScheduler, Timer
 from model import resnet_cifar10, vgg
+from option import args
 pjoin = os.path.join
-# ---
 
-model_names = sorted(name for name in models.__dict__
-    if name.islower() and not name.startswith("__")
-    and callable(models.__dict__[name]))
-
-parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--data', metavar='DIR', # --- prune: 'data' -> '--data'
-                    help='path to dataset')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
-                    # choices=model_names, # --- prune: We will use more than the imagenet models
-                    help='model architecture: ' +
-                        ' | '.join(model_names) +
-                        ' (default: resnet18)')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
-                    help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=90, type=int, metavar='N',
-                    help='number of total epochs to run')
-parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
-                    help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', '--batch_size', default=256, type=int,
-                    metavar='N',
-                    help='mini-batch size (default: 256), this is the total '
-                         'batch size of all GPUs on the current node when '
-                         'using Data Parallel or Distributed Data Parallel')
-parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
-                    metavar='LR', help='initial learning rate', dest='lr')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-                    help='momentum')
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
-                    metavar='W', help='weight decay (default: 1e-4)',
-                    dest='weight_decay')
-parser.add_argument('-p', '--print-freq', default=10, type=int,
-                    metavar='N', help='print frequency (default: 10)')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
-parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-                    help='evaluate model on validation set')
-parser.add_argument('--pretrained', dest='pretrained', action='store_true',
-                    help='use pre-trained model')
-parser.add_argument('--world-size', default=-1, type=int,
-                    help='number of nodes for distributed training')
-parser.add_argument('--rank', default=-1, type=int,
-                    help='node rank for distributed training')
-parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
-                    help='url used to set up distributed training')
-parser.add_argument('--dist-backend', default='nccl', type=str,
-                    help='distributed backend')
-parser.add_argument('--seed', default=None, type=int,
-                    help='seed for initializing training. ')
-parser.add_argument('--gpu', default=None, type=int,
-                    help='GPU id to use.')
-parser.add_argument('--multiprocessing-distributed', action='store_true',
-                    help='Use multi-processing distributed training to launch '
-                         'N processes per node, which has N GPUs. This is the '
-                         'fastest way to use PyTorch for either single node or '
-                         'multi node data parallel training')
-# --- prune
-parser.add_argument('--project_name', type=str, default="")
-parser.add_argument('--CodeID', type=str, default="")
-parser.add_argument('--debug', action="store_true")
-parser.add_argument('--screen_print', action="store_true")
-parser.add_argument('--resume_ExpID', type=str)
-parser.add_argument('--print_interval', type=int, default=100)
-parser.add_argument('--test_interval', type=int, default=2000)
-
-# prune related
-parser.add_argument('--method', type=str, default="")
-parser.add_argument('--data_path', type=str, default="./data")
-parser.add_argument('--dataset', type=str, default="imagenet", choices=['imagenet', 'cifar10', 'cifar100', 'tinyimagenet'])
-parser.add_argument('--wg', type=str, default="filter", help='weight_group', choices=['filter', 'channel', 'weight'])
-parser.add_argument('--lr_pick', type=float, default=1e-3)
-parser.add_argument('--lr_prune', type=float, default=1e-3)
-parser.add_argument('--lr_ft', type=str, help="lr schedule for finetune")
-parser.add_argument('--stage_pr', type=str, default="[]", help="pruning ratios for different stages")
-parser.add_argument('--skip_layers', type=str, default="[]", help="layers not to prune")
-parser.add_argument('--batch_size_prune', type=int, default=64, help="batch size when pruning")
-parser.add_argument('--update_reg_interval', type=int, default=1)
-parser.add_argument('--stabilize_reg_interval', type=int, default=20000)
-parser.add_argument('--plot_interval', type=int, default=100000000)
-parser.add_argument('--save_interval', type=int, default=2000, help="the interval to save model")
-parser.add_argument('--reg_multiplier', type=float, default=1, help="each time the reg increases by 'reg_multiplier * wd'")
-parser.add_argument('--reg_granularity_prune', type=float, default=1e-4)
-parser.add_argument('--reg_granularity_pick', type=float, default=1e-4)
-parser.add_argument('--reg_granularity_recover', type=float, default=-2e-4)
-parser.add_argument('--copy_bn_w', action="store_true")
-parser.add_argument('--copy_bn_b', action="store_true")
-parser.add_argument('--resume_path', type=str, default=None, help="supposed to replace the original 'resume' feature")
-parser.add_argument('--directly_ft_weights', type=str, default=None, help="the path to a pretrained model")
-parser.add_argument('--base_model_path', type=str, default=None, help="the path to the unpruned base model")
-parser.add_argument('--reinit', action="store_true")
-parser.add_argument('--AdaReg_only_picking', action="store_true")
-parser.add_argument('--AdaReg_revive_kept', action="store_true")
-parser.add_argument('--block_loss_grad', action="store_true", help="block the grad from loss, only apply wd")
-parser.add_argument('--save_mag_reg_log', action="store_true", help="save log of L1-norm of filters wrt reg")
-parser.add_argument('--save_order_log', action="store_true")
-parser.add_argument('--reg_upper_limit', type=float, default=1.5)
-parser.add_argument('--reg_upper_limit_pick', type=float, default=0.5)
-parser.add_argument('--mag_ratio_limit', type=float, default=1000)
-parser.add_argument('--pick_pruned', type=str, default="min", choices=['min', 'max', 'rand'])
-parser.add_argument('--pick_pruned_interval', type=int, default=1, help="the interval to pick pruned in AdaReg")
-parser.add_argument('--pr_ratio_file', type=str, default=None)
-parser.add_argument('--base_pr_model', type=str, default=None, help='the model that provides layer-wise pr')
-parser.add_argument('--note', type=str, default='', help='experiment note')
-args = parser.parse_args()
-args.copy_bn_w = True
-args.copy_bn_b = True
-# parse for layer-wise prune ratio
-# stage_pr is a list of float, skip_layers is a list of strings
-if args.arch.startswith('resnet'):
-    args.stage_pr = strlist_to_list(args.stage_pr, float) # example: [0, 0.4, 0.5, 0]
-    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [2.3.1, 3.1]
-elif args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
-    args.stage_pr = parse_prune_ratio_vgg(args.stage_pr) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
-    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
-args.resume_path = check_path(args.resume_path)
-args.directly_ft_weights = check_path(args.directly_ft_weights)
-args.base_model_path = check_path(args.base_model_path)
-args.base_pr_model = check_path(args.base_pr_model)
-args.data = pjoin(args.data_path, args.dataset)
-if args.dataset == 'imagenet':
-    img_size = 224
-elif args.dataset.startswith('cifar'):
-    img_size = 32
-elif args.dataset == 'tinyimagenet':
-    img_size = 64
 logger = Logger(args)
-logprint = logger.log_printer
+logprint = logger.log_printer.logprint
 accprint = logger.log_printer.accprint
 netprint = logger.log_printer.netprint
 timer = Timer(args.epochs)
-# ---
-
 best_acc1 = 0
-best_acc1_epoch = 0 # --- prune
+best_acc1_epoch = 0
+# ---
 
 def main():
     # --- prune
@@ -270,19 +143,11 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             model = torch.nn.DataParallel(model).cuda()
 
-    # --- prune
+    # --- prune: set the base model for pruning (non-ImageNet cases)
     if args.base_model_path:
         pretrained_path = args.base_model_path
         state_dict = torch.load(pretrained_path)['state_dict']
-        from collections import OrderedDict
-        new_state_dict = OrderedDict()
-        for k, v in state_dict.items():
-            if 'num_batches_tracked' in k:
-                # new_state_dict[k] = v * 0
-                pass
-            else:
-                new_state_dict[k] = v
-        model.load_state_dict(new_state_dict)
+        model.load_state_dict(state_dict)
         logprint("==> Load pretrained model successfully: '%s'" % pretrained_path)
         
 
@@ -323,8 +188,9 @@ def main_worker(gpu, ngpus_per_node, args):
         train_loader = loader.train_loader
         val_loader = loader.test_loader
     else:   
-        traindir = os.path.join(args.data, 'train')
-        valdir = os.path.join(args.data, 'val3') if args.debug else os.path.join(args.data, 'val') # --- prune
+        traindir = os.path.join(args.data_path, args.dataset, 'train')
+        folder = 'val3' if args.debug else 'val' # --- prune
+        valdir = os.path.join(args.data_path, args.dataset, folder)
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                         std=[0.229, 0.224, 0.225])
 
@@ -358,11 +224,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # --- prune
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
-    # so just before training, do pruning to obtain a new model.
+    # so just before training, conduct pruning to obtain a new model.
     if args.method:
-        # print arch
-        netprint(model)
-
         if args.dataset == 'imagenet':
             # imagenet training costs too much time, so we use a smaller batch size for pruning training
             train_loader_prune = torch.utils.data.DataLoader(
@@ -373,7 +236,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # get the original unpruned model statistics
         n_params_original = get_n_params(model)
-        n_flops_original = get_n_flops(model, input_res=img_size)
+        n_flops_original = get_n_flops(model, input_res=args.img_size)
 
         prune_state = ''
         if args.resume_path:
@@ -392,6 +255,8 @@ def main_worker(gpu, ngpus_per_node, args):
         
         if args.directly_ft_weights:
             state = torch.load(args.directly_ft_weights)
+            model = state['model'].cuda()
+            ''' Will be removed soon!
             if 'model' in state:
                 model = state['model'].cuda()
             else: # back-compatible to old saved pth, in which 'model' is not saved. Temporary use, will be removed!
@@ -405,7 +270,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 import pruner.l1_pruner as p
                 pruner = p.Pruner(model, args, logger, runner)
                 model = pruner.prune()
-
+            '''
             model.load_state_dict(state['state_dict'])
             optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                         momentum=args.momentum,
@@ -428,7 +293,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 module = 'pruner.%s_pruner' % args.method.lower()
             module = import_module(module)
             pruner = module.Pruner(model, args, logger, runner)
-            model = pruner.prune() # pruned model
+            model = pruner.prune() # get the pruned model
 
             # since model is new, we need a new optimizer
             optimizer = torch.optim.SGD(model.parameters(), args.lr,
@@ -437,16 +302,19 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # get the statistics of pruned model
         n_params_now = get_n_params(model)
-        n_flops_now = get_n_flops(model, input_res=img_size)
+        n_flops_now = get_n_flops(model, input_res=args.img_size)
         logprint("==> n_params_original: %.4fM, n_flops_original: %.4fG" % (n_params_original, n_flops_original))
         logprint("==> n_params_now:      %.4fM, n_flops_now:      %.4fG" % (n_params_now, n_flops_now))
         ratio_param = (n_params_original - n_params_now) / n_params_original
         ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
-        logprint("==> Reduction ratio -- params: %.4f, flops: %.4f" % (ratio_param, ratio_flops))
+        logprint("==> Reduction ratio -- params: %.4f, flops: %.4f (speedup %.4f)" % (ratio_param, ratio_flops, 1.0 / (1-ratio_flops)))
+        
+        # test and save just pruned model
+        netprint(model)
         if prune_state != 'finetune':
             t1 = time.time()
             acc1, acc5 = validate(val_loader, model, criterion, args)
-            accprint("Acc1 = %.4f Acc5 = %.4f (time = %.2fs) Just got pruned model, about to finetune" % 
+            accprint("Acc1 = %.4f Acc5 = %.4f (test time = %.2fs) Just got pruned model, about to finetune" % 
                 (acc1, acc5, time.time()-t1))
             state = {'arch': args.arch,
                     'model': model,
@@ -459,23 +327,9 @@ def main_worker(gpu, ngpus_per_node, args):
             }
             save_model(state, mark="just_finished_prune")
         
-        # print pruned model arch to log file
-        print(model, file=logger.logtxt, flush=True)
-        if args.screen_print:
-            print(model)
-
-        # lr finetune schduler
+        # set lr finetune schduler for finetune
         assert args.lr_ft is not None
-        lr_s = args.lr_ft.strip() # example: '[0: 0.001, 50: 0.0001, 100: 0.0001]'
-        lr_schedule = {}
-        if lr_s.startswith('[') and lr_s.endswith(']'):
-            lr_s = lr_s[1:-1]
-        tmp = lr_s.split(",") if "," in lr_s else lr_s.split(";")
-        for x in tmp:
-            epoch = int(x.split(":")[0].strip())
-            lr = float(x.split(":")[1].strip())
-            lr_schedule[epoch] = lr
-        lr_scheduler = PresetLRScheduler(lr_schedule)
+        lr_scheduler = PresetLRScheduler(args.lr_ft)
     # ---
 
     if args.evaluate:
@@ -488,14 +342,8 @@ def main_worker(gpu, ngpus_per_node, args):
             train_sampler.set_epoch(epoch)
         
         # --- prune: use our own lr scheduler
-        if args.method:
-            lr_scheduler(optimizer, epoch)
-        else:
-            adjust_learning_rate(optimizer, epoch, args)
-        for param_group in optimizer.param_groups:
-            lr = param_group['lr']
+        lr = lr_scheduler(optimizer, epoch) if args.method else adjust_learning_rate(optimizer, epoch, args)
         logprint("==> Set lr = %s @ Epoch %d " % (lr, epoch))
-        # ---
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
@@ -522,9 +370,9 @@ def main_worker(gpu, ngpus_per_node, args):
         if is_best:
             best_acc1_epoch = epoch
 
-        accprint("Acc1 = %.4f Acc5 = %.4f Epoch %d (after update) lr %s (Best Acc1 %.4f @ Epoch %d)" % 
-            (acc1, acc5, epoch, lr, best_acc1, best_acc1_epoch))
-        logprint('Predicted finish time: %s' % timer())
+        accprint("Acc1 %.4f Acc5 %.4f Epoch %d (after update) (Best_Acc1 %.4f @ Epoch %d) lr %s" % 
+            (acc1, acc5, epoch, best_acc1, best_acc1_epoch, lr))
+        logprint('predicted finish time: %s' % timer())
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
@@ -712,6 +560,7 @@ def adjust_learning_rate(optimizer, epoch, args):
     lr = args.lr * (0.1 ** (epoch // 30))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+    return lr
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""

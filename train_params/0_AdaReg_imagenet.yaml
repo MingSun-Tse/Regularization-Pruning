@@ -1,0 +1,30 @@
+
+
+
+method: AdaReg
+dataset: imagenet
+batch_size: 256
+batch_size_prune: 64
+
+# lr schedule
+lr_pick: 0.001
+lr_prune: 0.001
+lr_ft: {0:0.01, 15:0.001, 45:0.0001, 60:0.00001},
+epochs: 75
+
+# prune ratio
+stage_pr: [0.0, 0.6, 0.6, 0.6, 0.21]
+skip_layers: []
+
+# prune reg related
+update_reg_interval: 5
+stabilize_reg_interval: 40000
+reg_granularity_prune: 0.0001
+reg_granularity_pick: 0.00001
+reg_granularity_recover: -0.0001
+reg_upper_limit: 1
+reg_upper_limit_pick: 0.01
+
+AdaReg_only_picking: false
+AdaReg_revive_kept: false
+pick_pruned_interval: 1
