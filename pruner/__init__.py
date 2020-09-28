@@ -212,22 +212,24 @@ class MetaPruner:
         block_index = self.layers[name].block_index
         is_shortcut = self.layers[name].is_shortcut
         pr = self.args.stage_pr[stage]
-        
-        # do not prune the shortcut layers for now
-        if is_shortcut:
-            pr = 0
-        
-        # do not prune layers we set to be skipped
-        layer_id = '%s.%s.%s' % (str(stage), str(seq_index), str(block_index))
-        for s in self.args.skip_layers:
-            if s and layer_id.startswith(s):
-                pr = 0
 
-        # for channel/filter prune, do not prune the 1st/last conv in a block
-        if (wg == "channel" and block_index == 0) or \
-            (wg == "filter" and block_index == self.n_conv_within_block - 1):
-            pr = 0
-        
+        # for unstructured pruning, no restrictions, every layer can be pruned
+        if self.args.wg != 'weight':
+            # do not prune the shortcut layers for now
+            if is_shortcut:
+                pr = 0
+            
+            # do not prune layers we set to be skipped
+            layer_id = '%s.%s.%s' % (str(stage), str(seq_index), str(block_index))
+            for s in self.args.skip_layers:
+                if s and layer_id.startswith(s):
+                    pr = 0
+
+            # for channel/filter prune, do not prune the 1st/last conv in a block
+            if (wg == "channel" and block_index == 0) or \
+                (wg == "filter" and block_index == self.n_conv_within_block - 1):
+                pr = 0
+            
         # adjust accordingly if we explictly provide the pr_ratio_file
         if self.args.pr_ratio_file:
             line = open(self.args.pr_ratio_file).readline()
