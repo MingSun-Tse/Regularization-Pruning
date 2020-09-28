@@ -48,7 +48,13 @@ class Pruner(MetaPruner):
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d):
                 N, C, H, W = m.weight.data.size()
-                self.reg[name] = torch.zeros(N, C).cuda()
+                
+                # initialize reg
+                if self.args.wg == 'weight':
+                    self.reg[name] = torch.zeros_like(m.weight.data).flatten().cuda()
+                else:
+                    self.reg[name] = torch.zeros(N, C).cuda() 
+                
                 self.ranking[name] = []
                 if self.args.wg == "filter":
                     n_wg = N
@@ -144,7 +150,11 @@ class Pruner(MetaPruner):
             self.reg[name][:, pruned] += self.args.reg_granularity_prune
         elif self.args.wg == "filter":
             self.reg[name][pruned, :] += self.args.reg_granularity_prune
-        
+        elif self.args.wg == 'weight':
+            self.reg[name][pruned] += self.args.reg_granularity_prune
+        else:
+            raise NotImplementedError
+
         # when all layers are pushed hard enough, stop
         finish_update_reg = True
         for k in self.hist_mag_ratio:
@@ -335,7 +345,10 @@ class Pruner(MetaPruner):
         for name, m in self.model.named_modules():
             if name in self.reg:
                 reg = self.reg[name] # [N, C]
-                reg = reg.unsqueeze(2).unsqueeze(3) # [N, C, 1, 1]
+                if self.args.wg in ['filter', 'channel']:
+                    reg = reg.unsqueeze(2).unsqueeze(3) # [N, C, 1, 1]
+                elif self.args.wg == 'weight':
+                    reg = reg.view_as(m.weight.data) # [N, C, H, W]
                 l2_grad = reg * m.weight
                 if self.args.block_loss_grad:
                     m.weight.grad = l2_grad

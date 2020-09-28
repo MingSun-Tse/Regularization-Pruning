@@ -263,6 +263,8 @@ class MetaPruner:
                     elif wg == "weight":
                         w_abs = m.weight.abs()
                         n_wg = m.weight.numel()
+                    else:
+                        raise NotImplementedError
                     pr = self._get_layer_pr(name)
                     self.pruned_wg[name] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
                     self.kept_wg[name] = [i for i in range(n_wg) if i not in self.pruned_wg[name]]

@@ -84,6 +84,7 @@ parser.add_argument('--start_epoch', type=int, default=0)
 # prune related
 parser.add_argument('--method', type=str, default="")
 parser.add_argument('--data_path', type=str, default="./data")
+parser.add_argument('--wg', type=str, default="filter", choices=['filter', 'channel', 'weight'])
 parser.add_argument('--reinit', action="store_true")
 parser.add_argument('--block_loss_grad', action="store_true", help="block the grad from loss, only apply wd")
 parser.add_argument('--save_mag_reg_log', action="store_true", help="save log of L1-norm of filters wrt reg")
@@ -122,7 +123,6 @@ elif args.dataset == 'tinyimagenet':
 args.copy_bn_w = True
 args.copy_bn_b = True
 args.reg_multiplier = 1
-args.wg = 'filter' # choices=['min', 'max', 'rand']
 args.pick_pruned = 'min' # choices=['min', 'max', 'rand']
 
 
