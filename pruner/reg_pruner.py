@@ -192,6 +192,9 @@ class Pruner(MetaPruner):
             elif self.args.wg == 'filter':
                 self.reg[name][self.pruned_wg[name], :] += self.args.reg_granularity_prune
                 self.reg[name][self.kept_wg[name], :] = recover_reg
+            elif self.args.wg == 'weight':
+                self.reg[name][self.pruned_wg[name]] += self.args.reg_granularity_prune
+                self.reg[name][self.kept_wg[name]] = recover_reg
 
             # for kept weights, bring them back
             # 09/22 update: It seems negative reg is a bad idea to bring back magnitude.
@@ -216,7 +219,7 @@ class Pruner(MetaPruner):
         # plot w_abs distribution
         if self.total_iter % self.args.plot_interval == 0:
             self._plot_mag_ratio(w_abs, name)
-        if self.total_iter % self.args.print_interval == 0:
+        if self.total_iter % self.args.plot_interval == 0:
             self._log_down_mag_reg(w_abs, name)
         
         # save order
@@ -249,12 +252,12 @@ class Pruner(MetaPruner):
             print(logtmp, file=self.order_log, flush=True)
             
         # print to check magnitude ratio
-        mag_ratio_now_before = 0
-        if name in self.iter_finish_pick:
-            mag_ratio_now_before = self._update_mag_ratio(m, name, w_abs)
-        else:
-            pruned_wg = self._pick_pruned_wg(w_abs, pr)
-            self._update_mag_ratio(m, name, w_abs, pruned=pruned_wg) # just print to check
+        if self.args.wg != 'weight':
+            if name in self.iter_finish_pick:
+                self._update_mag_ratio(m, name, w_abs)
+            else:
+                pruned_wg = self._pick_pruned_wg(w_abs, pr)
+                self._update_mag_ratio(m, name, w_abs, pruned=pruned_wg) # just print to check
             
         # check if picking finishes
         finish_pick_cond = self.reg[name].max() >= self.args.reg_upper_limit_pick
@@ -294,9 +297,11 @@ class Pruner(MetaPruner):
             finish_update_reg = False
         else:
             cond0 = name in self.iter_finish_pick # finsihed picking
-            cond1 = self.hist_mag_ratio[name] >= self.args.mag_ratio_limit \
-                or self.reg[name].max() > self.args.reg_upper_limit
-            # cond2 = mag_ratio_now_before > 0.9 # the kept has been brought back, deprecated!
+            if self.args.wg == 'weight':
+                cond1 = self.reg[name].max() > self.args.reg_upper_limit
+            else:
+                cond1 = self.hist_mag_ratio[name] >= self.args.mag_ratio_limit \
+                    or self.reg[name].max() > self.args.reg_upper_limit
             finish_update_reg = cond0 and cond1
         return finish_update_reg
 
