@@ -294,6 +294,9 @@ def main_worker(gpu, ngpus_per_node, args):
             module = import_module(module)
             pruner = module.Pruner(model, args, logger, runner)
             model = pruner.prune() # get the pruned model
+            if args.wg == 'weight':
+                global mask
+                mask = pruner.mask
 
             # since model is new, we need a new optimizer
             optimizer = torch.optim.SGD(model.parameters(), args.lr,
@@ -422,6 +425,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
+        if args.method and args.wg == 'weight': # --- prune
+            apply_mask_forward(model)
         output = model(images)
         loss = criterion(output, target)
 
@@ -578,6 +583,12 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
+# --- prune: zero out pruned weights for unstructured pruning
+def apply_mask_forward(model):
+    global mask
+    for name, m in model.named_modules():
+        if name in mask:
+            m.weight.data.mul_(mask[name])
 
 if __name__ == '__main__':
     main()

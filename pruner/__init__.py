@@ -7,6 +7,8 @@ from math import ceil
 from collections import OrderedDict
 from utils import strdict_to_dict
 
+
+
 class Layer:
     def __init__(self, name, size, layer_index, res=False):
         self.name = name
@@ -16,30 +18,33 @@ class Layer:
         self.layer_index = layer_index
         self.is_shortcut = True if "downsample" in name else False
         if res:
-            self.stage, self.seq_index, self.block_index = self._get_various_index(name)
+            self.stage, self.seq_index, self.block_index = self._get_various_index_by_name(name)
     
-    def _get_various_index(self, name):
-        '''
+    def _get_various_index_by_name(self, name):
+        '''Get the indeces including stage, seq_ix, blk_ix.
             Same stage means the same feature map size.
         '''
+        global lastest_stage # an awkward impel, just for now
         if name.startswith('module.'):
-            name = name[7:]
+            name = name[7:] # remove the prefix caused by pytorch data parallel
 
         if "conv1" == name: # TODO: this might not be so safe
+            lastest_stage = 0
             return 0, None, None
         if "linear" in name or 'fc' in name: # Note: this can be risky. Check it fully. TODO: @mingsun-tse
-            return None, None, None
+            return lastest_stage + 1, None, None # fc layer should always be the last layer
         else:
             try:
-                stage  = int(name.split(".")[0][-1]) # Only work for standard resnets. name example: layer2.2.conv1, layer4.0.downsample.0
+                stage  = int(name.split(".")[0][-1]) # ONLY work for standard resnets. name example: layer2.2.conv1, layer4.0.downsample.0
                 seq_ix = int(name.split(".")[1])
                 if 'conv' in name.split(".")[-1]:
                     blk_ix = int(name[-1]) - 1
                 else:
-                    blk_ix = -1 # shortcut layer        
+                    blk_ix = -1 # shortcut layer  
+                lastest_stage = stage
                 return stage, seq_ix, blk_ix
             except:
-                print(name)
+                print('!Parsing the layer name failed: %s. Please check.' % name)
     
 class MetaPruner:
     def __init__(self, model, args, logger, runner):
@@ -93,10 +98,10 @@ class MetaPruner:
 
     def _register_layers(self):
         '''
-            This will maintain a data structure that will return some useful 
-            information via the name of a layer.
+            This will maintain a data structure that can return some useful 
+            information by the name of a layer.
         '''
-        ix = -1 # layer index
+        ix = -1 # layer index, starts from 0
         max_len_name = 0
         layer_shape = {}
         for name, m in self.model.named_modules():
@@ -109,8 +114,9 @@ class MetaPruner:
                 size = m.weight.size()
                 res = True if self.args.arch.startswith('resnet') else False
                 self.layers[name] = Layer(name, size, ix, res)
+        
         max_len_ix = len("%s" % ix)
-        print("Registering conv layer index and kernel shape:")
+        print("Register layer index and kernel shape:")
         format_str = "[%{}d] %{}s -- kernel_shape: %s".format(max_len_ix, max_len_name)
         for name, (ix, ks) in layer_shape.items():
             print(format_str % (ix, name, ks))
@@ -207,7 +213,7 @@ class MetaPruner:
         is_shortcut = self.layers[name].is_shortcut
         pr = self.args.stage_pr[stage]
         
-        # do not prune the shortcut layers (for now)
+        # do not prune the shortcut layers for now
         if is_shortcut:
             pr = 0
         
@@ -222,26 +228,12 @@ class MetaPruner:
             (wg == "filter" and block_index == self.n_conv_within_block - 1):
             pr = 0
         
-        # adjust
+        # adjust accordingly if we explictly provide the pr_ratio_file
         if self.args.pr_ratio_file:
             line = open(self.args.pr_ratio_file).readline()
             pr_weight = strdict_to_dict(line, float)
             if str(layer_index) in pr_weight:
                 pr = pr_weight[str(layer_index)] * pr
-            
-            # print final pr to check
-            # if not hasattr(self, '_final_pr'):
-            #     self._final_pr = {}
-            #     self._print_final_pr = False
-            # if str(layer_index) not in self._final_pr:
-            #     self._final_pr[str(layer_index)] = pr
-            # else:
-            #     if self._print_final_pr == False:
-            #         logtmp = ''
-            #         for k, v in self._final_pr.items():
-            #             logtmp += '%s:%.2f ' % (k, v)
-            #         self.print(logtmp)
-            #         self._print_final_pr = True
         return pr
 
     def _get_kept_wg_L1(self):
@@ -254,16 +246,15 @@ class MetaPruner:
             wg = self.args.wg
             cnt = 0
             for name, m in self.model.named_modules():
-                if isinstance(m, nn.Conv2d):
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                     cnt += 1
-                    print(str(cnt) + ' get kept wg L1 -- %s' % name)
-                    N, C, _, _ = m.weight.size()
+                    print('[%2d] get kept wg by L1 sorting -- %s' % (self.layers[name].layer_index, name))
                     if wg == "filter":
                         w_abs = m.weight.abs().mean(dim=[1, 2, 3])
-                        n_wg = N
+                        n_wg = m.weight.size(0)
                     elif wg == "channel":
                         w_abs = m.weight.abs().mean(dim=[0, 2, 3])
-                        n_wg = C
+                        n_wg = m.weight.size(1)
                     elif wg == "weight":
                         w_abs = m.weight.abs()
                         n_wg = m.weight.numel()
@@ -293,6 +284,10 @@ class MetaPruner:
         return kept_filter, kept_chl
 
     def _prune_and_build_new_model(self):
+        if self.args.wg == 'weight':
+            self._get_masks()
+            return
+
         new_model = copy.deepcopy(self.model)
         cnt_linear = 0
         for name, m in self.model.named_modules():
@@ -369,3 +364,15 @@ class MetaPruner:
         self.model = new_model
         n_filter = self._get_n_filter(self.model)
         self.logprint(n_filter)
+    
+    def _get_masks(self):
+        '''Get masks for unstructured pruning
+        '''
+        self.mask = {}
+        for name, m in self.model.named_modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                mask = torch.ones_like(m.weight.data).cuda().flatten()
+                pruned = self.pruned_wg[name]
+                mask[pruned] = 0
+                self.mask[name] = mask.view_as(m.weight.data)
+        self.logprint('Get masks done for weight pruning')

@@ -46,8 +46,8 @@ class Pruner(MetaPruner):
 
         self.prune_state = "update_reg"
         for name, m in self.model.named_modules():
-            if isinstance(m, nn.Conv2d):
-                N, C, H, W = m.weight.data.size()
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                N, C, *_ = m.weight.data.size()
                 
                 # initialize reg
                 if self.args.wg == 'weight':
@@ -302,7 +302,7 @@ class Pruner(MetaPruner):
 
     def _update_reg(self):
         for name, m in self.model.named_modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 cnt_m = self.layers[name].layer_index
                 pr = self._get_layer_pr(name)
                 
@@ -337,7 +337,7 @@ class Pruner(MetaPruner):
                     # check if all layers finish 'update_reg'
                     self.prune_state = "stabilize_reg"
                     for n, mm in self.model.named_modules():
-                        if isinstance(mm, nn.Conv2d):
+                        if isinstance(mm, nn.Conv2d) or isinstance(mm, nn.Linear):
                             if n not in self.iter_update_reg_finished:
                                 self.prune_state = "update_reg"
                                 break
