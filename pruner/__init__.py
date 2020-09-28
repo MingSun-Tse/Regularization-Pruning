@@ -80,14 +80,15 @@ class MetaPruner:
     def _pick_pruned(self, w_abs, pr, mode="min"):
         if pr == 0:
             return []
-        n_wg = len(w_abs.flatten())
+        w_abs_list = w_abs.flatten()
+        n_wg = len(w_abs_list)
         n_pruned = min(ceil(pr * n_wg), n_wg - 1) # do not prune all
         if mode == "rand":
             out = np.random.permutation(n_wg)[:n_pruned]
         elif mode == "min":
-            out = w_abs.flatten().sort()[1][:n_pruned]
+            out = w_abs_list.sort()[1][:n_pruned]
         elif mode == "max":
-            out = w_abs.flatten().sort()[1][-n_pruned:]
+            out = w_abs_list.sort()[1][-n_pruned:]
         return out
 
     def _register_layers(self):
@@ -251,8 +252,11 @@ class MetaPruner:
             self.logprint("==> Load base pr model successfully: '{}'".format(self.args.base_pr_model))
         else:    
             wg = self.args.wg
+            cnt = 0
             for name, m in self.model.named_modules():
                 if isinstance(m, nn.Conv2d):
+                    cnt += 1
+                    print(str(cnt) + ' get kept wg L1 -- %s' % name)
                     N, C, _, _ = m.weight.size()
                     if wg == "filter":
                         w_abs = m.weight.abs().mean(dim=[1, 2, 3])

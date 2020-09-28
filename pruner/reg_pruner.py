@@ -62,6 +62,9 @@ class Pruner(MetaPruner):
                 elif self.args.wg == "channel":
                     n_wg = C
                     w_abs = m.weight.abs().mean(dim=[0,2,3])
+                elif self.args.wg == 'weight':
+                    n_wg = m.weight.numel()
+                    w_abs = m.weight.abs().flatten()
                 for _ in range(n_wg):
                     self.ranking[name].append([])
                 self.original_w_mag[name] = m.weight.abs().mean().item()
@@ -124,14 +127,16 @@ class Pruner(MetaPruner):
             w_abs = m.weight.abs().mean(dim=[0, 2, 3])
         elif self.args.wg == "filter":
             w_abs = m.weight.abs().mean(dim=[1, 2, 3])
+        elif self.args.wg == "weight":
+            w_abs = m.weight.abs().flatten()
         return w_abs
 
     def _fix_reg(self, m, name):
         if self._get_layer_pr(name) == 0:
             return True
-        pruned = self.pruned_wg[name]
         self._update_mag_ratio(m, name, self.w_abs[name])
 
+        pruned = self.pruned_wg[name]
         if self.args.wg == "channel":
             self.reg[name][:, pruned] = self.args.reg_granularity_prune
         elif self.args.wg == "filter":
@@ -143,9 +148,11 @@ class Pruner(MetaPruner):
     def _inc_reg(self, m, name):
         if self._get_layer_pr(name) == 0:
             return True
-        pruned = self.pruned_wg[name]
-        self._update_mag_ratio(m, name, self.w_abs[name])
         
+        if self.args.wg != 'weight': # weight is too slow
+            self._update_mag_ratio(m, name, self.w_abs[name])
+        
+        pruned = self.pruned_wg[name]
         if self.args.wg == "channel":
             self.reg[name][:, pruned] += self.args.reg_granularity_prune
         elif self.args.wg == "filter":
@@ -156,10 +163,13 @@ class Pruner(MetaPruner):
             raise NotImplementedError
 
         # when all layers are pushed hard enough, stop
-        finish_update_reg = True
-        for k in self.hist_mag_ratio:
-            if self.hist_mag_ratio[k] < 1000:
-                finish_update_reg = False
+        if self.args.wg == 'weight': # for weight, do not use the magnitude ratio condition, because 'hist_mag_ratio' is not updated, too costly
+            finish_update_reg = False
+        else:
+            finish_update_reg = True
+            for k in self.hist_mag_ratio:
+                if self.hist_mag_ratio[k] < self.args.mag_ratio_limit:
+                    finish_update_reg = False
         return finish_update_reg or self.reg[name].max() > self.args.reg_upper_limit
         
     def _ada_reg(self, m, name):
