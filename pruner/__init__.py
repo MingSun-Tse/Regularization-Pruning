@@ -246,25 +246,21 @@ class MetaPruner:
             self.logprint("==> Load base pr model successfully: '{}'".format(self.args.base_pr_model))
         else:    
             wg = self.args.wg
-            cnt = 0
             for name, m in self.model.named_modules():
                 if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
-                    cnt += 1
-                    print('[%2d] get kept wg by L1 sorting -- %s' % (self.layers[name].layer_index, name))
+                    shape = m.weight.data.shape
+                    pr = self._get_layer_pr(name)
                     if wg == "filter":
-                        w_abs = m.weight.abs().mean(dim=[1, 2, 3])
-                        n_wg = m.weight.size(0)
+                        score = m.weight.abs().mean(dim=[1, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=1)
                     elif wg == "channel":
-                        w_abs = m.weight.abs().mean(dim=[0, 2, 3])
-                        n_wg = m.weight.size(1)
+                        score = m.weight.abs().mean(dim=[0, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=0)
                     elif wg == "weight":
-                        w_abs = m.weight.abs()
-                        n_wg = m.weight.numel()
+                        score = m.weight.abs().flatten()
                     else:
                         raise NotImplementedError
-                    pr = self._get_layer_pr(name)
-                    self.pruned_wg[name] = self._pick_pruned(w_abs, pr, self.args.pick_pruned)
-                    self.kept_wg[name] = [i for i in range(n_wg) if i not in self.pruned_wg[name]]
+                    self.pruned_wg[name] = self._pick_pruned(score, pr, self.args.pick_pruned)
+                    self.kept_wg[name] = [i for i in range(len(score)) if i not in self.pruned_wg[name]]
+                    print('[%2d] get kept wg by L1 sorting, done -- %s' % (self.layers[name].layer_index, name))
     
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":

@@ -47,24 +47,18 @@ class Pruner(MetaPruner):
         self.prune_state = "update_reg"
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
-                N, C, *_ = m.weight.data.size()
-                
+                shape = m.weight.data.shape
+
                 # initialize reg
                 if self.args.wg == 'weight':
                     self.reg[name] = torch.zeros_like(m.weight.data).flatten().cuda()
                 else:
-                    self.reg[name] = torch.zeros(N, C).cuda() 
+                    self.reg[name] = torch.zeros(shape[0], shape[1]).cuda() 
                 
+                # get original weight magnitude
+                w_abs = self._get_score(m)
+                n_wg = len(w_abs)
                 self.ranking[name] = []
-                if self.args.wg == "filter":
-                    n_wg = N
-                    w_abs = m.weight.abs().mean(dim=[1,2,3])
-                elif self.args.wg == "channel":
-                    n_wg = C
-                    w_abs = m.weight.abs().mean(dim=[0,2,3])
-                elif self.args.wg == 'weight':
-                    n_wg = m.weight.numel()
-                    w_abs = m.weight.abs().flatten()
                 for _ in range(n_wg):
                     self.ranking[name].append([])
                 self.original_w_mag[name] = m.weight.abs().mean().item()
@@ -123,10 +117,11 @@ class Pruner(MetaPruner):
         return mag_ratio_now_before
 
     def _get_score(self, m):
+        shape = m.weight.data.shape
         if self.args.wg == "channel":
-            w_abs = m.weight.abs().mean(dim=[0, 2, 3])
+            w_abs = m.weight.abs().mean(dim=[0, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=0)
         elif self.args.wg == "filter":
-            w_abs = m.weight.abs().mean(dim=[1, 2, 3])
+            w_abs = m.weight.abs().mean(dim=[1, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=1)
         elif self.args.wg == "weight":
             w_abs = m.weight.abs().flatten()
         return w_abs
@@ -361,7 +356,8 @@ class Pruner(MetaPruner):
             if name in self.reg:
                 reg = self.reg[name] # [N, C]
                 if self.args.wg in ['filter', 'channel']:
-                    reg = reg.unsqueeze(2).unsqueeze(3) # [N, C, 1, 1]
+                    if reg.shape != m.weight.data.shape:
+                        reg = reg.unsqueeze(2).unsqueeze(3) # [N, C, 1, 1]
                 elif self.args.wg == 'weight':
                     reg = reg.view_as(m.weight.data) # [N, C, H, W]
                 l2_grad = reg * m.weight
