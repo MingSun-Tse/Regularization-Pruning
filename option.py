@@ -124,6 +124,3 @@ args.copy_bn_w = True
 args.copy_bn_b = True
 args.reg_multiplier = 1
 args.pick_pruned = 'min' # choices=['min', 'max', 'rand']
-
-
-

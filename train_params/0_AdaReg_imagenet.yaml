@@ -9,7 +9,7 @@ batch_size_prune: 64
 # lr schedule
 lr_pick: 0.001
 lr_prune: 0.001
-lr_ft: {0:0.01, 15:0.001, 45:0.0001, 60:0.00001}
+lr_ft: {"0":0.01,"15":0.001,"45":0.0001,"60":0.00001}
 epochs: 75
 
 # prune ratio
