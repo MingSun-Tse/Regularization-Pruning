@@ -13,7 +13,8 @@ lr_ft: {"0":0.01,"15":0.001,"45":0.0001,"60":0.00001}
 epochs: 75
 
 # prune ratio
-stage_pr: '[0.0, 0.6, 0.6, 0.6, 0.21]' # res50, 2.31x
+# stage_pr: '[0.0, 0.6, 0.6, 0.6, 0.21]' # res50, 2.31x
+stage_pr: '[0.8, 0, 0, 0, 0, 0.8]' # res50, compression ratio = 0.8
 skip_layers: '[]'
 
 # prune reg related
