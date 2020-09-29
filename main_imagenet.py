@@ -253,6 +253,9 @@ def main_worker(gpu, ngpus_per_node, args):
                 logprint("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
                         args.resume_path, args.start_epoch, prune_state))
         
+        if args.wg == 'weight':
+            global mask
+
         if args.directly_ft_weights:
             state = torch.load(args.directly_ft_weights)
             model = state['model'].cuda()
@@ -276,8 +279,12 @@ def main_worker(gpu, ngpus_per_node, args):
                                         momentum=args.momentum,
                                         weight_decay=args.weight_decay)
             prune_state = 'finetune'
-            logprint("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
+            logprint("==> load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
                     args.directly_ft_weights, args.start_epoch, prune_state))
+            if 'mask' in state:
+                mask = state['mask']
+                apply_mask_forward(model)
+                logprint('==> mask restored')
 
         if prune_state != 'finetune':
             class runner: pass # to pass arguments
@@ -295,7 +302,6 @@ def main_worker(gpu, ngpus_per_node, args):
             pruner = module.Pruner(model, args, logger, runner)
             model = pruner.prune() # get the pruned model
             if args.wg == 'weight':
-                global mask
                 mask = pruner.mask
                 apply_mask_forward(model)
                 logprint('==> zero out pruned weight before finetune')
@@ -312,7 +318,7 @@ def main_worker(gpu, ngpus_per_node, args):
         logprint("==> n_params_now:      %.4fM, n_flops_now:      %.4fG" % (n_params_now, n_flops_now))
         ratio_param = (n_params_original - n_params_now) / n_params_original
         ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
-        logprint("==> Reduction ratio -- params: %.4f, flops: %.4f (speedup %.4f)" % (ratio_param, ratio_flops, 1.0 / (1-ratio_flops)))
+        logprint("==> reduction ratio -- params: %.4f, flops: %.4f (speedup %.4f)" % (ratio_param, ratio_flops, 1.0 / (1-ratio_flops)))
         
         # test and save just pruned model
         netprint(model)
