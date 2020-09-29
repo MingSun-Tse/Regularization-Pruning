@@ -330,7 +330,10 @@ def main_worker(gpu, ngpus_per_node, args):
                     'pruned_wg': pruner.pruned_wg,
                     'kept_wg': pruner.kept_wg,
             }
+            if args.wg == 'weight':
+                state['mask'] = mask 
             save_model(state, mark="just_finished_prune")
+
         
         # set lr finetune schduler for finetune
         assert args.lr_ft is not None
@@ -393,6 +396,8 @@ def main_worker(gpu, ngpus_per_node, args):
                         'ExpID': logger.ExpID,
                         'prune_state': 'finetune',
                 }
+                if args.wg == 'weight':
+                    state['mask'] = mask 
                 save_model(state, is_best)
             else:
                 save_checkpoint({
