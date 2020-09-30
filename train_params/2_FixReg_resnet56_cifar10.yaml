@@ -10,7 +10,7 @@ base_model_path: Experiments/teacher-resnet56-cifar10-wd0.0005-imagenetmean_SERV
 lr_pick: 0.001
 lr_prune: 0.001
 lr_ft: {"0":0.01, "60":0.001, "90":0.0001}
-epoch: 120
+epochs: 120
 
 # prune ratio
 # stage_pr: '[0, 0.5, 0.5, 0.5, 0]' # last 0 is for FC layer
