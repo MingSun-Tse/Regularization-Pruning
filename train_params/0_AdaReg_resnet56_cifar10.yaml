@@ -1,4 +1,4 @@
-method: L1
+method: AdaReg
 arch: resnet56
 dataset: cifar10
 batch_size: 256
