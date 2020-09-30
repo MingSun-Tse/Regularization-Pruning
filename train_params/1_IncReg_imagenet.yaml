@@ -15,7 +15,8 @@ epochs: 75
 # stage_pr: '[0, 0.3, 0.3, 0.3, 0.14]' # res50, 1.49x
 # stage_pr: '[0, 0.6, 0.6, 0.6, 0.21]' # res50, 2.31x
 # stage_pr: '[0, 0.68, 0.68, 0.68, 0.5]' # res50, 3.06x
-stage_pr: '[0.827, 0.827, 0.827, 0.827, 0.827, 0.827]' # res50, compression ratio = 0.827
+# stage_pr: '[0, 0.827, 0.827, 0.827, 0.827, 0.827]' # res50, compression ratio = 0.827
+stage_pr: '[0, 0.95, 0.95, 0.95, 0.95, 0.95]' # res50, compression ratio = 0.95
 skip_layers: '[]'
 
 # prune reg related
