@@ -129,15 +129,18 @@ class Pruner(MetaPruner):
     def _fix_reg(self, m, name):
         if self._get_layer_pr(name) == 0:
             return True
-        self._update_mag_ratio(m, name, self.w_abs[name])
+        if self.args.wg != 'weight':
+            self._update_mag_ratio(m, name, self.w_abs[name])
 
         pruned = self.pruned_wg[name]
         if self.args.wg == "channel":
-            self.reg[name][:, pruned] = self.args.reg_granularity_prune
+            self.reg[name][:, pruned] = self.args.reg_upper_limit
         elif self.args.wg == "filter":
-            self.reg[name][pruned, :] = self.args.reg_granularity_prune
+            self.reg[name][pruned, :] = self.args.reg_upper_limit
+        elif self.args.wg == 'weight':
+            self.reg[name][pruned] = self.args.reg_upper_limit
 
-        finish_update_reg = self.total_iter > 10000
+        finish_update_reg = self.total_iter > self.args.fix_reg_interval
         return finish_update_reg
 
     def _inc_reg(self, m, name):

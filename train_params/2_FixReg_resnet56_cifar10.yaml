@@ -23,5 +23,6 @@ skip_layers: '[]'
 
 # prune reg related
 fix_reg_interval: 50000
+update_reg_interval: 5
 stabilize_reg_interval: 5000
 reg_upper_limit: 1
