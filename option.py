@@ -114,7 +114,7 @@ args.directly_ft_weights = check_path(args.directly_ft_weights)
 args.base_model_path = check_path(args.base_model_path)
 args.base_pr_model = check_path(args.base_pr_model)
 
-if args.dataset == 'imagenet':
+if args.dataset in ['imagenet', 'imagenet_subset_200']:
     args.img_size = 224
 elif args.dataset.startswith('cifar'):
     args.img_size = 32
