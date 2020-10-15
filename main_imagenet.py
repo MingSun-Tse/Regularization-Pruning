@@ -99,7 +99,7 @@ def main_worker(gpu, ngpus_per_node, args):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
     # create model
-    if args.dataset == "imagenet":
+    if args.dataset in ["imagenet", 'imagenet_subset_200']:
         if args.pretrained:
             logprint("=> using pre-trained model '{}'".format(args.arch))
             model = models.__dict__[args.arch](pretrained=True)
@@ -183,7 +183,7 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code
-    if args.dataset != 'imagenet':
+    if args.dataset not in ['imagenet', 'imagenet_subset_200']:
         loader = Data(args)
         train_loader = loader.train_loader
         val_loader = loader.test_loader
@@ -226,7 +226,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
     # so just before training, conduct pruning to obtain a new model.
     if args.method:
-        if args.dataset == 'imagenet':
+        if args.dataset in ['imagenet', 'imagenet_subset_200']:
             # imagenet training costs too much time, so we use a smaller batch size for pruning training
             train_loader_prune = torch.utils.data.DataLoader(
                 train_dataset, batch_size=args.batch_size_prune, shuffle=(train_sampler is None),
