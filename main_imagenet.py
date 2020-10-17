@@ -99,13 +99,15 @@ def main_worker(gpu, ngpus_per_node, args):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
     # create model
-    if args.dataset in ["imagenet", 'imagenet_subset_200']:
+    if args.dataset in ["imagenet"]:
         if args.pretrained:
             logprint("=> using pre-trained model '{}'".format(args.arch))
             model = models.__dict__[args.arch](pretrained=True)
         else:
             logprint("=> creating model '{}'".format(args.arch))
             model = models.__dict__[args.arch]()
+    elif args.dataset in ['imagenet_subset_200']:
+        model = models.__dict__[args.arch](num_classes=200)
     # --- prune: added cifar10, 100, tinyimagenet
     elif args.dataset == "cifar10":
         model = eval("resnet_cifar10.%s" % args.arch)()
