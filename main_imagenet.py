@@ -224,6 +224,15 @@ def main_worker(gpu, ngpus_per_node, args):
             batch_size=args.batch_size, shuffle=False,
             num_workers=args.workers, pin_memory=True)
 
+        test_set = datasets.ImageFolder(valdir, 
+            transforms.Compose([
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                normalize,
+            ]))
+        print('number of test example: %d' % len(test_set))
+
     # --- prune
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
     # so just before training, conduct pruning to obtain a new model.
@@ -350,6 +359,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     if args.evaluate:
         acc1, acc5 = validate(val_loader, model, criterion, args)
+        logprint('Acc1 %.4f Acc5 %.4f' % (acc1, acc5))
         return
     
     # finetune
