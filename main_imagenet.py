@@ -99,13 +99,15 @@ def main_worker(gpu, ngpus_per_node, args):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
     # create model
-    if args.dataset in ["imagenet", 'imagenet_subset_200']:
+    if args.dataset in ["imagenet"]:
         if args.pretrained:
             logprint("=> using pre-trained model '{}'".format(args.arch))
             model = models.__dict__[args.arch](pretrained=True)
         else:
             logprint("=> creating model '{}'".format(args.arch))
             model = models.__dict__[args.arch]()
+    elif args.dataset in ['imagenet_subset_200']:
+        model = models.__dict__[args.arch](num_classes=200)
     # --- prune: added cifar10, 100, tinyimagenet
     elif args.dataset == "cifar10":
         model = eval("resnet_cifar10.%s" % args.arch)()
@@ -221,6 +223,15 @@ def main_worker(gpu, ngpus_per_node, args):
             ])),
             batch_size=args.batch_size, shuffle=False,
             num_workers=args.workers, pin_memory=True)
+
+        test_set = datasets.ImageFolder(valdir, 
+            transforms.Compose([
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                normalize,
+            ]))
+        print('number of test example: %d' % len(test_set))
 
     # --- prune
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
@@ -348,6 +359,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     if args.evaluate:
         acc1, acc5 = validate(val_loader, model, criterion, args)
+        logprint('Acc1 %.4f Acc5 %.4f' % (acc1, acc5))
         return
     
     # finetune

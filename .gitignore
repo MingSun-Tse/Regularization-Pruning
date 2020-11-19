@@ -4,5 +4,7 @@ Debug_Dir
 Experiments
 data/cifar10*
 data/mnist
-data/imagenet
+data/imagenet*
 base_models
+model/*.th
+train_params/
