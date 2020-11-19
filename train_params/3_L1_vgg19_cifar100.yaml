@@ -1,0 +1,16 @@
+method: L1
+arch: vgg19
+dataset: cifar100
+batch_size: 256
+batch_size_prune: 256
+wd: 0.0005
+base_model_path: Experiments/teacher-vgg19-cifar100-wd0.0005_SERVER138-20200530-145041/weights/checkpoint_best.pth
+
+# lr schedule
+lr_prune: 0.001
+lr_ft: {"0":0.01,"60":0.001,"90":0.0001}
+epochs: 120
+
+# prune ratio
+stage_pr: '[0:0,1-20:0.8]'
+skip_layers: '[]'
