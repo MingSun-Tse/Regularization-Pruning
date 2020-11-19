@@ -127,7 +127,7 @@ class Pruner(MetaPruner):
         return w_abs
 
     def _fix_reg(self, m, name):
-        if self._get_layer_pr(name) == 0:
+        if self.pr[name] == 0:
             return True
         if self.args.wg != 'weight':
             self._update_mag_ratio(m, name, self.w_abs[name])
@@ -144,7 +144,7 @@ class Pruner(MetaPruner):
         return finish_update_reg
 
     def _inc_reg(self, m, name):
-        if self._get_layer_pr(name) == 0:
+        if self.pr[name] == 0:
             return True
         
         if self.args.wg != 'weight': # weight is too slow
@@ -174,7 +174,7 @@ class Pruner(MetaPruner):
         layer_index = self.layers[name].layer_index
         w_abs = self.w_abs[name]
         n_wg = len(w_abs)
-        pr = self._get_layer_pr(name)
+        pr = self.pr[name]
         if pr == 0:
             self.kept_wg[name] = range(n_wg)
             self.pruned_wg[name] = []
@@ -279,7 +279,7 @@ class Pruner(MetaPruner):
             # check if all layers finish picking
             self.all_layer_finish_pick = True
             for k in self.reg:
-                if self._get_layer_pr(k) > 0 and (k not in self.iter_finish_pick):
+                if self.pr[k] > 0 and (k not in self.iter_finish_pick):
                     self.all_layer_finish_pick = False
                     break
         
@@ -307,7 +307,7 @@ class Pruner(MetaPruner):
         for name, m in self.model.named_modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 cnt_m = self.layers[name].layer_index
-                pr = self._get_layer_pr(name)
+                pr = self.pr[name]
                 
                 if name in self.iter_update_reg_finished.keys():
                     continue

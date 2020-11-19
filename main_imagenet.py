@@ -314,11 +314,11 @@ def main_worker(gpu, ngpus_per_node, args):
         # get the statistics of pruned model
         n_params_now = get_n_params(model)
         n_flops_now = get_n_flops(model, input_res=args.img_size)
-        logprint("==> n_params_original: %.4fM, n_flops_original: %.4fG" % (n_params_original, n_flops_original))
-        logprint("==> n_params_now:      %.4fM, n_flops_now:      %.4fG" % (n_params_now, n_flops_now))
+        logprint("==> n_params_original: {:>7.4f}M, n_flops_original: {:>7.4f}G".format(n_params_original, n_flops_original))
+        logprint("==> n_params_now:      {:>7.4f}M, n_flops_now:      {:>7.4f}G".format(n_params_now, n_flops_now))
         ratio_param = (n_params_original - n_params_now) / n_params_original
         ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
-        logprint("==> reduction ratio -- params: %.4f, flops: %.4f (speedup %.4f)" % (ratio_param, ratio_flops, 1.0 / (1-ratio_flops)))
+        logprint("==> reduction ratio -- params: {:>5.2f}%, flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, ratio_flops*100, 1.0 / (1-ratio_flops)))
         
         # test and save just pruned model
         netprint(model)

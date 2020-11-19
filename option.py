@@ -1,5 +1,6 @@
 import torchvision.models as models
 import argparse
+import sys
 
 
 model_names = sorted(name for name in models.__dict__
@@ -95,19 +96,34 @@ parser.add_argument('--mag_ratio_limit', type=float, default=1000)
 parser.add_argument('--pr_ratio_file', type=str, default=None)
 parser.add_argument('--base_pr_model', type=str, default=None, help='the model that provides layer-wise pr')
 args = parser.parse_args()
+args_tmp = {}
+for k, v in args._get_kwargs():
+    args_tmp[k] = v
 
 # merge other params (such as method params)
 if args.params_json:
     args = merge_args(args, args.params_json)
 
+# Above is the default setting. But if we explicitly assign new value for some arg in the shell script, 
+# the following will adjust the arg to the assigned value.
+script = " ".join(sys.argv)
+for k, v in args_tmp.items():
+    if k in script:
+        args.__dict__[k] = v
+
 # parse for layer-wise prune ratio
 # stage_pr is a list of float, skip_layers is a list of strings
-if args.arch.startswith('resnet'):
-    args.stage_pr = strlist_to_list(args.stage_pr, float) # example: [0, 0.4, 0.5, 0]
-    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [2.3.1, 3.1]
-elif args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
-    args.stage_pr = parse_prune_ratio_vgg(args.stage_pr) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
-    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
+if args.stage_pr:
+    if args.arch.startswith('resnet'):
+        args.stage_pr = strlist_to_list(args.stage_pr, float) # example: [0, 0.4, 0.5, 0]
+        args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [2.3.1, 3.1]
+    elif args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
+        args.stage_pr = parse_prune_ratio_vgg(args.stage_pr) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
+        args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
+    else:
+        raise NotImplementedError
+else:
+    assert args.base_pr_model
 
 args.resume_path = check_path(args.resume_path)
 args.directly_ft_weights = check_path(args.directly_ft_weights)

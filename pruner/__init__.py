@@ -73,14 +73,10 @@ class MetaPruner:
                     self.n_conv_within_block = 3
             else:
                 self.n_conv_within_block = 2
-            self._get_layer_pr = self._get_layer_pr_resnet
-        elif arch.startswith("alexnet") or arch.startswith("vgg"):
-            self._get_layer_pr = self._get_layer_pr_vgg
-        else:
-            raise NotImplementedError
 
         self.kept_wg = {}
-        self.pruned_wg = {} 
+        self.pruned_wg = {}
+        self.get_pr() # set up pr for each layer
         
     def _pick_pruned(self, w_abs, pr, mode="min"):
         if pr == 0:
@@ -237,6 +233,21 @@ class MetaPruner:
             if str(layer_index) in pr_weight:
                 pr = pr_weight[str(layer_index)] * pr
         return pr
+    
+    def get_pr(self):
+        arch = self.args.arch
+        if arch.startswith('resnet'):
+            get_layer_pr = self._get_layer_pr_resnet
+        elif arch.startswith("alexnet") or arch.startswith("vgg"):
+            get_layer_pr = self._get_layer_pr_vgg
+
+        self.pr = {}
+        if self.args.stage_pr: # stage_pr may be None (in the case that base_pr_model is provided)
+            for name, m in self.model.named_modules():
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                    self.pr[name] = get_layer_pr(name)
+        else:
+            assert self.args.base_pr_model
 
     def _get_kept_wg_L1(self):
         if self.args.base_pr_model:
@@ -244,12 +255,15 @@ class MetaPruner:
             self.pruned_wg = state['pruned_wg']
             self.kept_wg = state['kept_wg']
             self.logprint("==> Load base pr model successfully: '{}'".format(self.args.base_pr_model))
+
+            # update pr accordingly
+            for name in self.pruned_wg:
+                self.pr[name] = len(self.pruned_wg[name]) * 1. / (len(self.pruned_wg[name]) + len(self.kept_wg[name]))
         else:    
             wg = self.args.wg
             for name, m in self.model.named_modules():
                 if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                     shape = m.weight.data.shape
-                    pr = self._get_layer_pr(name)
                     if wg == "filter":
                         score = m.weight.abs().mean(dim=[1, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=1)
                     elif wg == "channel":
@@ -258,7 +272,7 @@ class MetaPruner:
                         score = m.weight.abs().flatten()
                     else:
                         raise NotImplementedError
-                    self.pruned_wg[name] = self._pick_pruned(score, pr, self.args.pick_pruned)
+                    self.pruned_wg[name] = self._pick_pruned(score, self.pr[name], self.args.pick_pruned)
                     self.kept_wg[name] = [i for i in range(len(score)) if i not in self.pruned_wg[name]]
                     print('[%2d] get kept wg by L1 sorting, done -- %s' % (self.layers[name].layer_index, name))
     
