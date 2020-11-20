@@ -9,11 +9,11 @@ base_model_path: Experiments/teacher-resnet56-cifar10-wd0.0005-imagenetmean_SERV
 # lr schedule
 lr_pick: 0.001
 lr_prune: 0.001
-# lr_ft: {"0":0.01, "60":0.001, "90":0.0001}
-# epoch: 120
+lr_ft: {"0":0.01, "60":0.001, "90":0.0001}
+epoch: 120
 # lr_ft: {"0":0.01, "120":0.001, "180": 0.0001} # 2xtime
-lr_ft: {"0":0.02, "60":0.01, "120":0.001, "180": 0.0001} # 2xtime, try tuning lr
-epochs: 240
+# lr_ft: {"0":0.02, "60":0.01, "120":0.001, "180": 0.0001} # 2xtime, try tuning lr
+# epochs: 240
 
 # prune ratio
 # stage_pr: '[0, 0.5, 0.5, 0.5, 0]' # last 0 is for FC layer
@@ -22,7 +22,8 @@ epochs: 240
 # stage_pr: '[0, 0.925, 0.925, 0.925, 0]'
 # stage_pr: '[0, 0.95, 0.95, 0.95, 0]'
 # stage_pr: '[0, 0.75, 0.75, 0.32, 0]' # 2.55x
-stage_pr: '[0, 0.85, 0.65, 0.29, 0]' # 2.56x
+# stage_pr: '[0, 0.85, 0.65, 0.29, 0]' # 2.56x
+stage_pr: '[0,0.76,0.76,0,0]' # 2.14x
 skip_layers: '[]'
 
 # prune reg related
