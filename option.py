@@ -62,7 +62,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'multi node data parallel training')
 # --- prune
 import os
-from utils import strlist_to_list, check_path, parse_prune_ratio_vgg, merge_args
+from utils import strlist_to_list, strdict_to_dict, check_path, parse_prune_ratio_vgg, merge_args
 pjoin = os.path.join
 
 # routine params
@@ -86,6 +86,10 @@ parser.add_argument('--start_epoch', type=int, default=0)
 
 # prune related
 parser.add_argument('--method', type=str, default="")
+parser.add_argument('--stage_pr', type=str, default="")
+parser.add_argument('--skip_layers', type=str, default="")
+parser.add_argument('--batch_size_prune', type=int, default=64)
+parser.add_argument('--lr_ft', type=str, default="{0:0.01,30:0.001,60:0.0001,75:0.00001}")
 parser.add_argument('--data_path', type=str, default="./data")
 parser.add_argument('--wg', type=str, default="filter", choices=['filter', 'channel', 'weight'])
 parser.add_argument('--reinit', action="store_true")
@@ -123,7 +127,11 @@ if args.stage_pr:
     else:
         raise NotImplementedError
 else:
-    assert args.base_pr_model
+    assert args.base_pr_model, 'If stage_pr is not provided, base_pr_model must be provided'
+
+# set up lr for finetuning
+assert args.lr_ft, 'lr_ft must be provided'
+args.lr_ft = strdict_to_dict(args.lr_ft, float)
 
 args.resume_path = check_path(args.resume_path)
 args.directly_ft_weights = check_path(args.directly_ft_weights)

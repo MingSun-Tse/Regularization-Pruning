@@ -31,8 +31,8 @@ import numpy as np
 from importlib import import_module
 from data import Data
 from logger import Logger
-from utils import get_n_params, get_n_flops, PresetLRScheduler, Timer
-from model import resnet_cifar10, vgg
+from utils import get_n_params, get_n_flops, get_n_params_, get_n_flops_, PresetLRScheduler, Timer
+from model import resnet_cifar10
 from option import args
 pjoin = os.path.join
 
@@ -111,8 +111,6 @@ def main_worker(gpu, ngpus_per_node, args):
     # --- prune: added cifar10, 100, tinyimagenet
     elif args.dataset == "cifar10":
         model = eval("resnet_cifar10.%s" % args.arch)()
-    elif args.dataset == 'cifar100':
-        model = eval('vgg.%s' % args.arch)()
     else:
         raise NotImplementedError
     
@@ -248,6 +246,8 @@ def main_worker(gpu, ngpus_per_node, args):
         # get the original unpruned model statistics
         n_params_original = get_n_params(model)
         n_flops_original = get_n_flops(model, input_res=args.img_size)
+        n_params_original_v2 = get_n_params_(model) # test new func, the old one will be removed
+        n_flops_original_v2 = get_n_flops_(model, img_size=args.img_size) # test new func, the old one will be removed
 
         prune_state = ''
         if args.resume_path:
@@ -326,6 +326,7 @@ def main_worker(gpu, ngpus_per_node, args):
         n_params_now = get_n_params(model)
         n_flops_now = get_n_flops(model, input_res=args.img_size)
         logprint("==> n_params_original: {:>7.4f}M, n_flops_original: {:>7.4f}G".format(n_params_original, n_flops_original))
+        logprint("==> n_params_original_v2: {:>7.4f}M, n_flops_original_v2: {:>7.4f}G".format(n_params_original_v2/1e6, n_flops_original_v2/1e9))
         logprint("==> n_params_now:      {:>7.4f}M, n_flops_now:      {:>7.4f}G".format(n_params_now, n_flops_now))
         ratio_param = (n_params_original - n_params_now) / n_params_original
         ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
