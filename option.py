@@ -84,21 +84,33 @@ parser.add_argument('--directly_ft_weights', type=str, default=None, help="the p
 parser.add_argument('--base_model_path', type=str, default=None, help="the path to the unpruned base model")
 parser.add_argument('--start_epoch', type=int, default=0)
 
-# prune related
+# general pruning method related
 parser.add_argument('--method', type=str, default="")
 parser.add_argument('--stage_pr', type=str, default="")
 parser.add_argument('--skip_layers', type=str, default="")
-parser.add_argument('--batch_size_prune', type=int, default=64)
 parser.add_argument('--lr_ft', type=str, default="{0:0.01,30:0.001,60:0.0001,75:0.00001}")
 parser.add_argument('--data_path', type=str, default="./data")
 parser.add_argument('--wg', type=str, default="filter", choices=['filter', 'channel', 'weight'])
-parser.add_argument('--reinit', action="store_true")
-parser.add_argument('--block_loss_grad', action="store_true", help="block the grad from loss, only apply wd")
+parser.add_argument('--reinit', action="store_true", help='If true, before finetuning, the pruned model will be reinited')
+parser.add_argument('--block_loss_grad', action="store_true", help="block the grad from loss, only apply weight decay")
 parser.add_argument('--save_mag_reg_log', action="store_true", help="save log of L1-norm of filters wrt reg")
 parser.add_argument('--save_order_log', action="store_true")
 parser.add_argument('--mag_ratio_limit', type=float, default=1000)
 parser.add_argument('--pr_ratio_file', type=str, default=None)
 parser.add_argument('--base_pr_model', type=str, default=None, help='the model that provides layer-wise pr')
+
+# GReg method related (default setting is for ImageNet):
+parser.add_argument('--batch_size_prune', type=int, default=64)
+parser.add_argument('--lr_prune', type=float, default=0.001)
+parser.add_argument('--update_reg_interval', type=int, default=5)
+parser.add_argument('--stabilize_reg_interval', type=int, default=40000)
+parser.add_argument('--reg_upper_limit', type=float, default=1.0)
+parser.add_argument('--reg_upper_pick', type=float, default=1e-2)
+parser.add_argument('--reg_granularity_pick', type=float, default=1e-5)
+parser.add_argument('--reg_granularity_prune', type=float, default=1e-4)
+parser.add_argument('--reg_granularity_recover', type=float, default=-1e-4)
+
+
 args = parser.parse_args()
 args_tmp = {}
 for k, v in args._get_kwargs():
