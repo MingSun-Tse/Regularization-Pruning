@@ -32,7 +32,7 @@ from importlib import import_module
 from data import Data
 from logger import Logger
 from utils import get_n_params, get_n_flops, get_n_params_, get_n_flops_, PresetLRScheduler, Timer
-from model import resnet_cifar10
+from model import model_dict
 from option import args
 pjoin = os.path.join
 
@@ -108,9 +108,9 @@ def main_worker(gpu, ngpus_per_node, args):
             model = models.__dict__[args.arch]()
     elif args.dataset in ['imagenet_subset_200']:
         model = models.__dict__[args.arch](num_classes=200)
-    # --- prune: added cifar10, 100, tinyimagenet
-    elif args.dataset == "cifar10":
-        model = eval("resnet_cifar10.%s" % args.arch)()
+    # --- prune: added cifar10, 100 dataset
+    elif args.dataset in ['cifar10', 'cifar100']:
+        model = model_dict[args.arch]()
     else:
         raise NotImplementedError
     

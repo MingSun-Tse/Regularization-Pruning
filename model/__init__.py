@@ -6,6 +6,8 @@ import time
 import numpy as np
 from math import ceil
 from collections import OrderedDict
+from .vgg import vgg19
+from .resnet_cifar10 import resnet56
 
 def set_up_model(args, logger):
     logger.log_printer("==> making model ...")
@@ -19,3 +21,8 @@ def set_up_model(args, logger):
         model.load_pretrained()
 
     return model
+
+model_dict = {
+    'resnet56': resnet56,
+    'vgg19': vgg19,
+}
