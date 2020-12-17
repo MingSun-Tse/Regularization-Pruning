@@ -1,7 +1,7 @@
 '''
     This code is based on the official PyTorch ImageNet training example 'main.py'. Commit ID: 69d2798, 04/23/2020.
     URL: https://github.com/pytorch/examples/tree/master/imagenet
-    All modified parts will be indicated by '--- prune' mark.
+    Important modified parts will be indicated by '@mst' mark.
     We will do our best to maintain back compatibility.
     Questions to @mingsun-tse (wang.huan@northeastern.edu).
 '''
@@ -25,7 +25,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 
-# --- prune
+# --- @mst
 import copy
 import numpy as np
 from importlib import import_module
@@ -39,14 +39,14 @@ pjoin = os.path.join
 logger = Logger(args)
 logprint = logger.log_printer.logprint
 accprint = logger.log_printer.accprint
-netprint = logger.log_printer.netprint
+netprint = logger.netprint
 timer = Timer(args.epochs)
 best_acc1 = 0
 best_acc1_epoch = 0
 # ---
 
 def main():
-    # --- prune
+    # --- @mst
     # move this to above, won't influence the original functions
     # args = parser.parse_args()
     # ---
@@ -108,12 +108,25 @@ def main_worker(gpu, ngpus_per_node, args):
             model = models.__dict__[args.arch]()
     elif args.dataset in ['imagenet_subset_200']:
         model = models.__dict__[args.arch](num_classes=200)
-    # --- prune: added cifar10, 100 dataset
+    # @mst: added cifar10, 100 dataset
     elif args.dataset in ['cifar10', 'cifar100']:
         model = model_dict[args.arch]()
     else:
         raise NotImplementedError
-    
+
+    # @mst: print inital model arch
+    netprint(model, 'initial model arch')
+
+    # @mst: save the model after initialization if necessary
+    if args.save_init_model:
+        state = {
+                'arch': args.arch,
+                'model': model,
+                'state_dict': model.state_dict(),
+                'ExpID': logger.ExpID,
+        }
+        save_model(state, mark='init')
+
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
@@ -143,7 +156,7 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             model = torch.nn.DataParallel(model).cuda()
 
-    # --- prune: set the base model for pruning (non-ImageNet cases)
+    # --- @mst: set the base model for pruning (non-ImageNet cases)
     if args.base_model_path:
         pretrained_path = args.base_model_path
         state_dict = torch.load(pretrained_path)['state_dict']
@@ -159,6 +172,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                 weight_decay=args.weight_decay)
 
     # optionally resume from a checkpoint
+    # --- @mst: we will use our option '--resume_path', keep this for back-compatibility
     if args.resume:
         if os.path.isfile(args.resume):
             logprint("=> loading checkpoint '{}'".format(args.resume))
@@ -189,7 +203,7 @@ def main_worker(gpu, ngpus_per_node, args):
         val_loader = loader.test_loader
     else:   
         traindir = os.path.join(args.data_path, args.dataset, 'train')
-        folder = 'val3' if args.debug else 'val' # --- prune
+        folder = 'val3' if args.debug else 'val' # --- @mst
         valdir = os.path.join(args.data_path, args.dataset, folder)
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                         std=[0.229, 0.224, 0.225])
@@ -231,7 +245,7 @@ def main_worker(gpu, ngpus_per_node, args):
             ]))
         print('number of test example: %d' % len(test_set))
 
-    # --- prune
+    # --- @mst
     # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
     # so just before training, conduct pruning to obtain a new model.
     if args.method:
@@ -274,15 +288,15 @@ def main_worker(gpu, ngpus_per_node, args):
             if 'model' in state:
                 model = state['model'].cuda()
             else: # back-compatible to old saved pth, in which 'model' is not saved. Temporary use, will be removed!
-                class runner: pass
-                runner.test = validate
-                runner.test_loader = val_loader
-                runner.train_loader = train_loader_prune
-                runner.criterion = criterion
-                runner.args = args
-                runner.save = save_model
+                class passer: pass
+                passer.test = validate
+                passer.test_loader = val_loader
+                passer.train_loader = train_loader_prune
+                passer.criterion = criterion
+                passer.args = args
+                passer.save = save_model
                 import pruner.l1_pruner as p
-                pruner = p.Pruner(model, args, logger, runner)
+                pruner = p.Pruner(model, args, logger, passer)
                 model = pruner.prune()
             '''
             model.load_state_dict(state['state_dict'])
@@ -298,19 +312,19 @@ def main_worker(gpu, ngpus_per_node, args):
                 logprint('==> mask restored')
 
         if prune_state != 'finetune':
-            class runner: pass # to pass arguments
-            runner.test = validate
-            runner.test_loader = val_loader
-            runner.train_loader = train_loader_prune
-            runner.criterion = criterion
-            runner.args = args
-            runner.save = save_model
+            class passer: pass # to pass arguments
+            passer.test = validate
+            passer.test_loader = val_loader
+            passer.train_loader = train_loader_prune
+            passer.criterion = criterion
+            passer.args = args
+            passer.save = save_model
             if args.method.endswith("Reg"):
                 module = 'pruner.reg_pruner'
             else:
                 module = 'pruner.%s_pruner' % args.method.lower()
             module = import_module(module)
-            pruner = module.Pruner(model, args, logger, runner)
+            pruner = module.Pruner(model, args, logger, passer)
             model = pruner.prune() # get the pruned model
             if args.wg == 'weight':
                 mask = pruner.mask
@@ -333,7 +347,7 @@ def main_worker(gpu, ngpus_per_node, args):
         logprint("==> reduction ratio -- params: {:>5.2f}%, flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, ratio_flops*100, 1.0 / (1-ratio_flops)))
         
         # test and save just pruned model
-        netprint(model)
+        netprint(model, 'model that was just pruned')
         if prune_state != 'finetune':
             t1 = time.time()
             acc1, acc5 = validate(val_loader, model, criterion, args)
@@ -362,20 +376,20 @@ def main_worker(gpu, ngpus_per_node, args):
         acc1, acc5 = validate(val_loader, model, criterion, args)
         logprint('Acc1 %.4f Acc5 %.4f' % (acc1, acc5))
         return
-    
+
     # finetune
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         
-        # --- prune: use our own lr scheduler
+        # --- @mst: use our own lr scheduler
         lr = lr_scheduler(optimizer, epoch) if args.method else adjust_learning_rate(optimizer, epoch, args)
         logprint("==> Set lr = %s @ Epoch %d " % (lr, epoch))
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
 
-        # --- prune: check weights magnitude
+        # --- @mst: check weights magnitude
         if args.method.endswith("Reg") and 'pruner' in locals():
             for name, m in model.named_modules():
                 if name in pruner.reg:
@@ -389,7 +403,7 @@ def main_worker(gpu, ngpus_per_node, args):
                         print(tmp)
 
         # evaluate on validation set
-        acc1, acc5 = validate(val_loader, model, criterion, args) # --- prune: added acc5
+        acc1, acc5 = validate(val_loader, model, criterion, args) # --- @mst: added acc5
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
@@ -404,7 +418,7 @@ def main_worker(gpu, ngpus_per_node, args):
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
             if args.method:
-                # --- prune: use our own save func
+                # --- @mst: use our own save func
                 state = {'epoch': epoch + 1,
                         'arch': args.arch,
                         'model': model,
@@ -465,7 +479,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         loss.backward()
         optimizer.step()
 
-        # --- prune: after update, zero out pruned weights
+        # --- @mst: after update, zero out pruned weights
         if args.method and args.wg == 'weight':
             apply_mask_forward(model)
 
@@ -522,13 +536,13 @@ def validate(val_loader, model, criterion, args):
         # TODO: this should also be done with the ProgressMeter
         # logprint(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
         #       .format(top1=top1, top5=top5))
-        # --- prune: commented because we will use another print outside 'validate'
+        # --- @mst: commented because we will use another print outside 'validate'
     logprint("time compute: %.4f ms" % (np.mean(time_compute)*1000))
 
     # change back to original model state if necessary
     if train_state:
         model.train()
-    return top1.avg, top5.avg # --- prune: added returning top5 acc
+    return top1.avg, top5.avg # --- @mst: added returning top5 acc
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
@@ -536,7 +550,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
 
-# --- prune: use our own save model function
+# --- @mst: use our own save model function
 def save_model(state, is_best=False, mark=''):
     out = pjoin(logger.weights_path, "checkpoint.pth")
     torch.save(state, out)
@@ -611,7 +625,7 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
-# --- prune: zero out pruned weights for unstructured pruning
+# --- @mst: zero out pruned weights for unstructured pruning
 def apply_mask_forward(model):
     global mask
     for name, m in model.named_modules():

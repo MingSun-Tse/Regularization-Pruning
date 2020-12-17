@@ -70,7 +70,6 @@ parser.add_argument('--project_name', type=str, default="")
 parser.add_argument('--CodeID', type=str, default="")
 parser.add_argument('--debug', action="store_true")
 parser.add_argument('--screen_print', action="store_true")
-parser.add_argument('--resume_ExpID', type=str)
 parser.add_argument('--note', type=str, default='', help='experiment note')
 parser.add_argument('--print_interval', type=int, default=100)
 parser.add_argument('--test_interval', type=int, default=2000)
@@ -83,6 +82,7 @@ parser.add_argument('--resume_path', type=str, default=None, help="supposed to r
 parser.add_argument('--directly_ft_weights', type=str, default=None, help="the path to a pretrained model")
 parser.add_argument('--base_model_path', type=str, default=None, help="the path to the unpruned base model")
 parser.add_argument('--start_epoch', type=int, default=0)
+parser.add_argument('--save_init_model', action="store_true", help='save the model after initialization')
 
 # general pruning method related
 parser.add_argument('--method', type=str, default="")
