@@ -91,6 +91,7 @@ parser.add_argument('--skip_layers', type=str, default="")
 parser.add_argument('--lr_ft', type=str, default="{0:0.01,30:0.001,60:0.0001,75:0.00001}")
 parser.add_argument('--data_path', type=str, default="./data")
 parser.add_argument('--wg', type=str, default="filter", choices=['filter', 'channel', 'weight'])
+parser.add_argument('--pick_pruned', type=str, default='min', choices=['min', 'max', 'rand'], help='the criterion to select weights to prune')
 parser.add_argument('--reinit', action="store_true", help='If true, before finetuning, the pruned model will be reinited')
 parser.add_argument('--block_loss_grad', action="store_true", help="block the grad from loss, only apply weight decay")
 parser.add_argument('--save_mag_reg_log', action="store_true", help="save log of L1-norm of filters wrt reg")
@@ -161,4 +162,3 @@ elif args.dataset == 'tinyimagenet':
 args.copy_bn_w = True
 args.copy_bn_b = True
 args.reg_multiplier = 1
-args.pick_pruned = 'min' # choices=['min', 'max', 'rand']
