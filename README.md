@@ -1,7 +1,7 @@
 # Regularization-Pruning
 
 This repository is for the GReg pruning method introduced in the following paper: \
-Neural Pruning via Growing Regularization [[Arxiv](xx)] \
+Neural Pruning via Growing Regularization [[Arxiv](https://arxiv.org/abs/2012.09243)] \
 [Huan Wang](http://huanwang.tech/), [Can Qin](http://canqin.tech/), [Yulun Zhang](http://yulunzhang.com/), and [Yun Fu](http://www1.ece.neu.edu/~yunfu/) \
 Northeastern University, Boston, MA, USA
 
@@ -22,14 +22,14 @@ git clone git@github.com:MingSun-Tse/Regularization-Pruning.git -b master
 
 
 ## Setp 3: Set up pretrained (unpruned) models
-- For CIFAR datasets, we train our own models with comparable accuracies with their original papers. 
+- For CIFAR datasets, we train our own models with comparable accuracies with their original papers ([our pretrained CIFAR models](xx)). 
 - For ImageNet, we use the official [torchvision models](https://pytorch.org/docs/stable/torchvision/models.html) for fair comparison with others. They will be automatically downloaded during training.
 
 ## Step 4: Run (pruning)
 
 
 ## Results
-Our pruned models on ImageNet can be downloaded at this [google drive](). Comparison results are shown below.
+Our pruned models on ImageNet can be downloaded at this [google drive](xx). Comparison results are shown below.
 
 
 
