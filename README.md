@@ -1,7 +1,7 @@
 # Regularization-Pruning
 
 This repository is for the deep neural network pruning method introduced in the following paper:
-> Neural Pruning via Growing Regularization [[Arxiv](https://arxiv.org/abs/2012.09243)] \
+> **Neural Pruning via Growing Regularization [[arxiv](https://arxiv.org/abs/2012.09243)]** \
 > [Huan Wang](http://huanwang.tech/), [Can Qin](http://canqin.tech/), [Yulun Zhang](http://yulunzhang.com/), and [Yun Fu](http://www1.ece.neu.edu/~yunfu/) \
 > Northeastern University, Boston, MA, USA
 
@@ -11,7 +11,7 @@ TLDR: The paper introduces two new pruning methods (named `GReg-1` and `GReg-2`)
 
 ## Step 1: Set up environment
 - OS: Linux (Ubuntu 1404 and 1604 checked. It should be all right for most linux platforms. Windows and MacOS not checked.)
-- python==3.6.9 (conda to manage environment is suggested)
+- python=3.6.9 (conda to manage environment is suggested)
 - All the dependant libraries are summarized in `requirements.txt`. Simply install them by `pip install -r requirements`.
 - CUDA and cuDNN
 
@@ -21,7 +21,7 @@ git clone git@github.com:MingSun-Tse/Regularization-Pruning.git -b master
 ```
 
 ## Step 2: Set up dataset
-- We evaluate our methods on CIFAR and ImageNet. CIFAR will be automatically downloaded.
+- We evaluate our methods on CIFAR and ImageNet. CIFAR will be automatically downloaded during training.
 - For ImageNet, prepare it following the official [pytorch imagenet example](https://github.com/pytorch/examples/tree/master/imagenet).
 
 
@@ -33,9 +33,13 @@ git clone git@github.com:MingSun-Tse/Regularization-Pruning.git -b master
 
 
 ## Results
-Our pruned models on ImageNet can be downloaded at this [google drive](xx). Comparison results are shown below.
-<center><img src="readme_figures/acceleration_comparison_imagenet.png" width="400" hspace="10"></center>
+Our pruned models on ImageNet can be downloaded at this [google drive](xx). Comparison results are shown below. Both structured pruning (filter pruning) and unstructured pruning are evaluated.
 
+(1) Acceleration (structured pruning) comparison on ImageNet
+<center><img src="readme_figures/acceleration_comparison_imagenet.png" width="700" hspace="10"></center>
+
+(2) Compression (unstructured pruning) comparison on ImageNet
+<center><img src="readme_figures/compression_comparison_imagenet.png" width="700" hspace="10"></center>
 
 ## Acknowledgments
 In this code we refer to the following implementations: [pytorch imagenet example](https://github.com/pytorch/examples/tree/master/imagenet), [EigenDamage-Pytorch](https://github.com/alecwangcq/EigenDamage-Pytorch), [pytorch_resnet_cifar10](https://github.com/akamaster/pytorch_resnet_cifar10). Great thanks to them!
@@ -46,7 +50,7 @@ Please cite this in your publication if our work helps your research. Should you
     @article{wang2020neural,
       Author = {Wang, Huan and Qin, Can and Zhang, Yulun and Fu, Yun},
       Title = {Neural Pruning via Growing Regularization},
-      Journal = {},
+      Journal = {arXiv preprint arXiv:2012.09243},
       Year = {2020}
     }
 
