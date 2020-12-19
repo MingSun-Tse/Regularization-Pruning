@@ -8,12 +8,12 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--data', metavar='DIR', # --- prune: 'data' -> '--data'
+parser.add_argument('--data', metavar='DIR', # @mst: 'data' -> '--data'
                     help='path to dataset')
 parser.add_argument('--dataset',
-                    help='dataset name')
+                    help='dataset name', choices=['cifar10', 'cifar100', 'imagenet', 'imagenet_subset_200'])
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
-                    # choices=model_names, # --- prune: We will use more than the imagenet models
+                    # choices=model_names, # @mst: We will use more than the imagenet models, so remove this
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
@@ -60,14 +60,13 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'N processes per node, which has N GPUs. This is the '
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
-# --- prune
+# @mst
 import os
 from utils import strlist_to_list, strdict_to_dict, check_path, parse_prune_ratio_vgg, merge_args
 pjoin = os.path.join
 
 # routine params
 parser.add_argument('--project_name', type=str, default="")
-parser.add_argument('--CodeID', type=str, default="")
 parser.add_argument('--debug', action="store_true")
 parser.add_argument('--screen_print', action="store_true")
 parser.add_argument('--note', type=str, default='', help='experiment note')
@@ -130,12 +129,16 @@ for k, v in args_tmp.items():
 
 # parse for layer-wise prune ratio
 # stage_pr is a list of float, skip_layers is a list of strings
+num_layers = {
+    'alexnet': 8,
+    'vgg19': 19,
+}
 if args.stage_pr:
     if args.arch.startswith('resnet'):
         args.stage_pr = strlist_to_list(args.stage_pr, float) # example: [0, 0.4, 0.5, 0]
         args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [2.3.1, 3.1]
     elif args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
-        args.stage_pr = parse_prune_ratio_vgg(args.stage_pr) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
+        args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=num_layers[args.arch]) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
         args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
     else:
         raise NotImplementedError
@@ -158,7 +161,7 @@ elif args.dataset.startswith('cifar'):
 elif args.dataset == 'tinyimagenet':
     args.img_size = 64
 
-# some params to maintain back-compatibility
+# some deprecated params to maintain back-compatibility
 args.copy_bn_w = True
 args.copy_bn_b = True
 args.reg_multiplier = 1
