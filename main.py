@@ -33,6 +33,7 @@ from data import Data
 from logger import Logger
 from utils import get_n_params, get_n_flops, get_n_params_, get_n_flops_, PresetLRScheduler, Timer
 from model import model_dict
+from pruner import pruner_dict
 from option import args
 pjoin = os.path.join
 
@@ -320,11 +321,13 @@ def main_worker(gpu, ngpus_per_node, args):
             passer.criterion = criterion
             passer.args = args
             passer.save = save_model
-            if args.method.endswith("Reg"):
-                module = 'pruner.reg_pruner'
-            else:
-                module = 'pruner.%s_pruner' % args.method.lower()
-            module = import_module(module)
+            # if args.method in ['GReg-1', 'GReg-2']:
+            #     module = 'pruner.reg_pruner'
+            # else:
+            #     module = 'pruner.%s_pruner' % args.method.lower()
+            # module = import_module(module)
+            module = pruner_dict[args.method]
+
             pruner = module.Pruner(model, args, logger, passer)
             model = pruner.prune() # get the pruned model
             if args.wg == 'weight':

@@ -4,7 +4,7 @@ import copy
 import time
 import numpy as np
 from utils import _weights_init
-from pruner import MetaPruner
+from .meta_pruner import MetaPruner
 
 class Pruner(MetaPruner):
     def __init__(self, model, args, logger, runner):

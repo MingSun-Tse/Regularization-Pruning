@@ -1,14 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import os
-import copy
-import time
-import numpy as np
-import pickle
-from pruner import MetaPruner
+import os, copy, time, pickle, numpy as np, math
+from .meta_pruner import MetaPruner
 from utils import plot_weights_heatmap
-import math
 import matplotlib.pyplot as plt
 pjoin = os.path.join
 
@@ -31,16 +26,16 @@ class Pruner(MetaPruner):
         self.all_layer_finish_pick = False
         self.w_abs = {}
         self.mag_reg_log = {}
-        if self.args.__dict__.get('AdaReg_only_picking'):
+        if self.args.__dict__.get('AdaReg_only_picking'): # AdaReg is the old name for GReg-2
             self.original_model = copy.deepcopy(self.model)
         
         # prune_init, to determine the pruned weights
         # this will update the 'self.kept_wg' and 'self.pruned_wg' 
-        if self.args.method.endswith('Reg'):
+        if self.args.method in ['GReg-1', 'GReg-2']:
             self._get_kept_wg_L1()
         for k, v in self.pruned_wg.items():
             self.pruned_wg_L1[k] = v
-        if self.args.method == 'AdaReg': # AdaReg will determine which wgs to prune later, so clear it here
+        if self.args.method == 'GReg-2': # GReg-2 will determine which wgs to prune later, so clear it here
             self.kept_wg = {}
             self.pruned_wg = {}
 
@@ -143,7 +138,7 @@ class Pruner(MetaPruner):
         finish_update_reg = self.total_iter > self.args.fix_reg_interval
         return finish_update_reg
 
-    def _inc_reg(self, m, name):
+    def _greg_1(self, m, name):
         if self.pr[name] == 0:
             return True
         
@@ -170,7 +165,7 @@ class Pruner(MetaPruner):
                     finish_update_reg = False
         return finish_update_reg or self.reg[name].max() > self.args.reg_upper_limit
         
-    def _ada_reg(self, m, name):
+    def _greg_2(self, m, name):
         layer_index = self.layers[name].layer_index
         w_abs = self.w_abs[name]
         n_wg = len(w_abs)
@@ -268,7 +263,7 @@ class Pruner(MetaPruner):
             picked_wg_in_common = [i for i in pruned_wg if i in self.pruned_wg_L1[name]]
             common_ratio = len(picked_wg_in_common) / len(pruned_wg) if len(pruned_wg) else -1
             n_finish_pick = len(self.iter_finish_pick)
-            self.logprint("    [%d] just finished pick (n_finish_pick = %d). %.2f in common chosen by L1 & AdaReg. Iter = %d" % 
+            self.logprint("    [%d] just finished pick (n_finish_pick = %d). %.2f in common chosen by L1 & GReg-2. Iter = %d" % 
                 (layer_index, n_finish_pick, common_ratio, self.total_iter))
             
             # re-scale the weights to recover the response magnitude
@@ -323,12 +318,12 @@ class Pruner(MetaPruner):
                 # (1) update reg of this layer (2) determine if it is time to stop update reg
                 if self.args.method == "FixReg":
                     finish_update_reg = self._fix_reg(m, name)
-                elif self.args.method == "IncReg":
-                    finish_update_reg = self._inc_reg(m, name)
-                elif self.args.method == "AdaReg":
-                    finish_update_reg = self._ada_reg(m, name)
+                elif self.args.method == "GReg-1":
+                    finish_update_reg = self._greg_1(m, name)
+                elif self.args.method == "GReg-2":
+                    finish_update_reg = self._greg_2(m, name)
                 else:
-                    self.logprint("Wrong 'method', please check.")
+                    self.logprint("Wrong '--method' argument, please check.")
                     exit(1)
 
                 # check prune state
@@ -487,7 +482,7 @@ class Pruner(MetaPruner):
                 #             plot_weights_heatmap(self.reg[name], out_path2)
                 
                 if self.args.__dict__.get('AdaReg_only_picking') and self.all_layer_finish_pick:
-                    self.logprint("AdaReg just finished picking for all layers. Resume original model and switch to IncReg. Iter = %d" % total_iter)
+                    self.logprint("GReg-2 just finished picking for all layers. Resume original model and switch to GReg-1. Iter = %d" % total_iter)
                     
                     # save picked wg
                     pkl_path = os.path.join(self.logger.log_path, 'picked_wg.pkl')
@@ -495,13 +490,13 @@ class Pruner(MetaPruner):
                         pickle.dump(self.pruned_wg, f)
                     exit(0)
                     
-                    # set to IncReg method
+                    # set to GReg-1 method
                     self.model = self.original_model # reload the original model
                     self.optimizer = optim.SGD(self.model.parameters(), 
                                             lr=self.args.lr_prune, 
                                             momentum=self.args.momentum,
                                             weight_decay=self.args.weight_decay)
-                    self.args.method = "IncReg"
+                    self.args.method = "GReg-1"
                     self.args.AdaReg_only_picking = False # do not get in again
                     # reinit
                     for k in self.reg:
@@ -510,7 +505,7 @@ class Pruner(MetaPruner):
                 
                 if self.args.__dict__.get('AdaReg_revive_kept') and self.all_layer_finish_pick:
                     self._prune_and_build_new_model()
-                    self.logprint("AdaReg just finished picking for all layers. Pruned and go to 'finetune'. Iter = %d" % total_iter)
+                    self.logprint("GReg-2 just finished picking for all layers. Pruned and go to 'finetune'. Iter = %d" % total_iter)
                     return copy.deepcopy(self.model)
                 
                 # change prune state
