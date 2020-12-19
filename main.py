@@ -114,9 +114,6 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         raise NotImplementedError
 
-    # @mst: print inital model arch
-    netprint(model, 'initial model arch')
-
     # @mst: save the model after initialization if necessary
     if args.save_init_model:
         state = {
@@ -156,13 +153,17 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             model = torch.nn.DataParallel(model).cuda()
 
-    # --- @mst: set the base model for pruning (non-ImageNet cases)
+    # @mst: load the unpruned model for pruning 
+    # This may be useful for the non-imagenet cases where we use our pretrained models
     if args.base_model_path:
-        pretrained_path = args.base_model_path
-        state_dict = torch.load(pretrained_path)['state_dict']
-        model.load_state_dict(state_dict)
-        logprint("==> Load pretrained model successfully: '%s'" % pretrained_path)
+        ckpt = torch.load(args.base_model_path)
+        if 'model' in ckpt:
+            model = ckpt['model']
+        model.load_state_dict(ckpt['state_dict'])
+        logprint("==> Load pretrained model successfully: '%s'" % args.base_model_path)
         
+    # @mst: print base model arch
+    netprint(model, 'base model arch')
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
