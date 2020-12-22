@@ -282,7 +282,7 @@ class MetaPruner:
                         intersection = [x for x in self.pruned_wg_pr_model[name] if x in self.pruned_wg[name]]
                         intersection_ratio = len(intersection) / len(self.pruned_wg[name]) if len(self.pruned_wg[name]) else 0
                         logtmp += ', intersection ratio of the weights picked by L1 vs. base_pr_model: %.4f (%d)' % (intersection_ratio, len(intersection))
-                    print(logtmp)
+                    self.logprint(logtmp)
 
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":
