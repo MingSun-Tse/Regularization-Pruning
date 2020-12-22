@@ -7,7 +7,7 @@ model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
 
-parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+parser = argparse.ArgumentParser(description='Regularization-Pruning PyTorch')
 parser.add_argument('--data', metavar='DIR', # @mst: 'data' -> '--data'
                     help='path to dataset')
 parser.add_argument('--dataset',
@@ -97,8 +97,9 @@ parser.add_argument('--block_loss_grad', action="store_true", help="block the gr
 parser.add_argument('--save_mag_reg_log', action="store_true", help="save log of L1-norm of filters wrt reg")
 parser.add_argument('--save_order_log', action="store_true")
 parser.add_argument('--mag_ratio_limit', type=float, default=1000)
-parser.add_argument('--pr_ratio_file', type=str, default=None)
 parser.add_argument('--base_pr_model', type=str, default=None, help='the model that provides layer-wise pr')
+parser.add_argument('--inherit_pruned', type=str, default='index', choices=['index', 'pr'], 
+    help='when --base_pr_model is provided, we can choose to inherit the pruned index or only the pruning ratio (pr)')
 
 # GReg method related (default setting is for ImageNet):
 parser.add_argument('--batch_size_prune', type=int, default=64)

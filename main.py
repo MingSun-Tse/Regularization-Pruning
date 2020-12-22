@@ -444,6 +444,11 @@ def main_worker(gpu, ngpus_per_node, args):
                     'best_acc1': best_acc1,
                     'optimizer' : optimizer.state_dict(),
                 }, is_best)
+        
+        acc_threshold = 93.355
+        if best_acc1 >= acc_threshold:
+            logprint('Acc1 > %s, early stopped' % acc_threshold)
+            exit(0)
             
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')

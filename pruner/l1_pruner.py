@@ -19,4 +19,3 @@ class Pruner(MetaPruner):
             self.logprint("Reinit model")
 
         return self.model
-    

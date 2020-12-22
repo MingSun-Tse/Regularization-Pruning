@@ -246,13 +246,22 @@ class MetaPruner:
                     self.pr[name] = get_layer_pr(name)
         else:
             assert self.args.base_pr_model
+            if self.args.inherit_pruned == 'pr':
+                state = torch.load(self.args.base_pr_model)
+                pruned_wg = state['pruned_wg']
+                kept_wg = state['kept_wg']
+                for k in pruned_wg.keys():
+                    n_pruned = len(pruned_wg[k])
+                    n_kept = len(kept_wg[k])
+                    self.pr[k] = float(n_pruned) / (n_pruned + n_kept)
+                self.logprint("==> Load base pr model successfully and inherit its pruning ratio: '{}'".format(self.args.base_pr_model))
 
     def _get_kept_wg_L1(self):
-        if self.args.base_pr_model:
+        if self.args.base_pr_model and self.args.inherit_pruned == 'index':
             state = torch.load(self.args.base_pr_model)
             self.pruned_wg = state['pruned_wg']
             self.kept_wg = state['kept_wg']
-            self.logprint("==> Load base pr model successfully: '{}'".format(self.args.base_pr_model))
+            self.logprint("==> Load base pr model successfully and inherit its pruned index: '{}'".format(self.args.base_pr_model))
 
             # update pr accordingly
             for name in self.pruned_wg:
@@ -272,7 +281,7 @@ class MetaPruner:
                         raise NotImplementedError
                     self.pruned_wg[name] = self._pick_pruned(score, self.pr[name], self.args.pick_pruned)
                     self.kept_wg[name] = [i for i in range(len(score)) if i not in self.pruned_wg[name]]
-                    print('[%2d] get kept wg by L1 sorting, done -- %s' % (self.layers[name].layer_index, name))
+                    print('[%2d] got kept wg by L1 sorting (%s) -- %s' % (self.layers[name].layer_index, self.args.pick_pruned, name))
     
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":
