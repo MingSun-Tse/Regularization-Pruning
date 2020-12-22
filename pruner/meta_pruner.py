@@ -246,26 +246,20 @@ class MetaPruner:
                     self.pr[name] = get_layer_pr(name)
         else:
             assert self.args.base_pr_model
-            if self.args.inherit_pruned == 'pr':
-                state = torch.load(self.args.base_pr_model)
-                pruned_wg = state['pruned_wg']
-                kept_wg = state['kept_wg']
-                for k in pruned_wg.keys():
-                    n_pruned = len(pruned_wg[k])
-                    n_kept = len(kept_wg[k])
-                    self.pr[k] = float(n_pruned) / (n_pruned + n_kept)
-                self.logprint("==> Load base pr model successfully and inherit its pruning ratio: '{}'".format(self.args.base_pr_model))
+            state = torch.load(self.args.base_pr_model)
+            self.pruned_wg_pr_model = state['pruned_wg']
+            self.kept_wg_pr_model = state['kept_wg']
+            for k in self.pruned_wg_pr_model:
+                n_pruned = len(self.pruned_wg_pr_model[k])
+                n_kept = len(self.kept_wg_pr_model[k])
+                self.pr[k] = float(n_pruned) / (n_pruned + n_kept)
+            self.logprint("==> Load base_pr_model successfully and inherit its pruning ratio: '{}'".format(self.args.base_pr_model))
 
     def _get_kept_wg_L1(self):
         if self.args.base_pr_model and self.args.inherit_pruned == 'index':
-            state = torch.load(self.args.base_pr_model)
-            self.pruned_wg = state['pruned_wg']
-            self.kept_wg = state['kept_wg']
-            self.logprint("==> Load base pr model successfully and inherit its pruned index: '{}'".format(self.args.base_pr_model))
-
-            # update pr accordingly
-            for name in self.pruned_wg:
-                self.pr[name] = len(self.pruned_wg[name]) * 1. / (len(self.pruned_wg[name]) + len(self.kept_wg[name]))
+            self.pruned_wg = self.pruned_wg_pr_model
+            self.kept_wg = self.kept_wg_pr_model
+            self.logprint("==> Inherit the pruned index from base_pr_model: '{}'".format(self.args.base_pr_model))
         else:    
             wg = self.args.wg
             for name, m in self.model.named_modules():
@@ -281,8 +275,15 @@ class MetaPruner:
                         raise NotImplementedError
                     self.pruned_wg[name] = self._pick_pruned(score, self.pr[name], self.args.pick_pruned)
                     self.kept_wg[name] = [i for i in range(len(score)) if i not in self.pruned_wg[name]]
-                    print('[%2d] got kept wg by L1 sorting (%s) -- %s' % (self.layers[name].layer_index, self.args.pick_pruned, name))
-    
+                    logtmp = '[%2d %s] got pruned wg by L1 sorting (%s), pr %.4f' % (self.layers[name].layer_index, name, self.args.pick_pruned, self.pr[name])
+                    
+                    # compare the pruned weights picked by L1-sorting vs. other criterion which provides the base_pr_model (e.g., OBD)
+                    if self.args.base_pr_model:
+                        intersection = [x for x in self.pruned_wg_pr_model[name] if x in self.pruned_wg[name]]
+                        intersection_ratio = len(intersection) / len(self.pruned_wg[name]) if len(self.pruned_wg[name]) else 0
+                        logtmp += ', intersection ratio of the weights picked by L1 vs. base_pr_model: %.4f (%d)' % (intersection_ratio, len(intersection))
+                    print(logtmp)
+
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":
             kept_chl = self.kept_wg[name]
