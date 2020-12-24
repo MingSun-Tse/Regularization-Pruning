@@ -223,13 +223,14 @@ class MetaPruner:
             if (wg == "channel" and block_index == 0) or \
                 (wg == "filter" and block_index == self.n_conv_within_block - 1):
                 pr = 0
-            
-        # adjust accordingly if we explictly provide the pr_ratio_file
-        if self.args.pr_ratio_file:
-            line = open(self.args.pr_ratio_file).readline()
-            pr_weight = strdict_to_dict(line, float)
-            if str(layer_index) in pr_weight:
-                pr = pr_weight[str(layer_index)] * pr
+        
+        # Deprecated, will be removed:
+        # # adjust accordingly if we explictly provide the pr_ratio_file
+        # if self.args.pr_ratio_file:
+        #     line = open(self.args.pr_ratio_file).readline()
+        #     pr_weight = strdict_to_dict(line, float)
+        #     if str(layer_index) in pr_weight:
+        #         pr = pr_weight[str(layer_index)] * pr
         return pr
     
     def get_pr(self):
