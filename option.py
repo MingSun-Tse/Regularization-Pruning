@@ -133,6 +133,7 @@ for k, v in args_tmp.items():
 # stage_pr is a list of float, skip_layers is a list of strings
 num_layers = {
     'alexnet': 8,
+    'vgg16': 16,
     'vgg19': 19,
 }
 if args.stage_pr:
