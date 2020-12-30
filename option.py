@@ -93,6 +93,7 @@ parser.add_argument('--data_path', type=str, default="./data")
 parser.add_argument('--wg', type=str, default="filter", choices=['filter', 'channel', 'weight'])
 parser.add_argument('--pick_pruned', type=str, default='min', choices=['min', 'max', 'rand'], help='the criterion to select weights to prune')
 parser.add_argument('--reinit', action="store_true", help='If true, before finetuning, the pruned model will be reinited')
+parser.add_argument('--use_bn', action="store_true", default=False, help='use BN in the network')
 parser.add_argument('--block_loss_grad', action="store_true", help="block the grad from loss, only apply weight decay")
 parser.add_argument('--save_mag_reg_log', action="store_true", help="save log of L1-norm of filters wrt reg")
 parser.add_argument('--save_order_log', action="store_true")
@@ -156,13 +157,6 @@ args.resume_path = check_path(args.resume_path)
 args.directly_ft_weights = check_path(args.directly_ft_weights)
 args.base_model_path = check_path(args.base_model_path)
 args.base_pr_model = check_path(args.base_pr_model)
-
-if args.dataset in ['imagenet', 'imagenet_subset_200']:
-    args.img_size = 224
-elif args.dataset.startswith('cifar'):
-    args.img_size = 32
-elif args.dataset == 'tinyimagenet':
-    args.img_size = 64
 
 # some deprecated params to maintain back-compatibility
 args.copy_bn_w = True

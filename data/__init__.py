@@ -7,6 +7,7 @@ import torch
 from torch.utils import data
 from torch.utils.data import DataLoader
 
+
 class Data(object):
     def __init__(self, args):
         self.args = args
@@ -29,3 +30,16 @@ class Data(object):
                                       num_workers=4,
                                       shuffle=False,
                                       pin_memory=True)
+
+num_classes_dict = {
+    'cifar10': 10,
+    'cifar100': 100,
+    'imagenet': 1000,
+    'imagenet_subset_200': 200,
+}
+
+img_size_dict = {
+    'cifar10': 32,
+    'cifar100': 32,
+    'imagenet': 224,
+}

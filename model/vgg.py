@@ -1,5 +1,5 @@
-# This file is referring to: [EigenDamage, ICML'19]
-# at https://github.com/alecwangcq/EigenDamage-Pytorch
+# This file is referring to: [EigenDamage, ICML'19] at https://github.com/alecwangcq/EigenDamage-Pytorch.
+# We modified a little to make it more neat and standard.
 
 import math
 import torch
@@ -27,19 +27,12 @@ defaultcfg = {
 
 
 class VGG(nn.Module):
-    def __init__(self, dataset='cifar10', depth=19, init_weights=True, cfg=None):
+    def __init__(self, depth=19, num_classes=10, use_bn=True, init_weights=True, cfg=None):
         super(VGG, self).__init__()
         if cfg is None:
             cfg = defaultcfg[depth]
 
-        self.features = self.make_layers(cfg, True)
-        self.dataset = dataset
-        if dataset == 'cifar10' or dataset == 'cinic-10':
-            num_classes = 10
-        elif dataset == 'cifar100':
-            num_classes = 100
-        elif dataset == 'tiny_imagenet':
-            num_classes = 200
+        self.features = self.make_layers(cfg, use_bn)
         self.classifier = nn.Linear(cfg[-1], num_classes)
         if init_weights:
             self.apply(_weights_init)
@@ -61,10 +54,7 @@ class VGG(nn.Module):
 
     def forward(self, x):
         x = self.features(x)
-        if self.dataset == 'tiny_imagenet':
-            x = nn.AvgPool2d(4)(x)
-        else:
-            x = nn.AvgPool2d(2)(x)
+        x = nn.AvgPool2d(x.size(3))(x)
         x = x.view(x.size(0), -1)
         y = self.classifier(x)
         return y
@@ -84,5 +74,9 @@ class VGG(nn.Module):
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
 
-def vgg19(dataset='cifar100'):
-    return VGG(dataset)
+def vgg16(num_classes=10, use_bn=True):
+    return VGG(16, num_classes=num_classes, use_bn=use_bn)
+    
+def vgg19(num_classes=10, use_bn=True):
+    return VGG(19, num_classes=num_classes, use_bn=use_bn)
+

@@ -33,6 +33,7 @@ from data import Data
 from logger import Logger
 from utils import get_n_params, get_n_flops, get_n_params_, get_n_flops_, PresetLRScheduler, Timer
 from model import model_dict
+from data import num_classes_dict, img_size_dict
 from pruner import pruner_dict
 from option import args
 pjoin = os.path.join
@@ -100,6 +101,8 @@ def main_worker(gpu, ngpus_per_node, args):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
     # create model
+    num_classes = num_classes_dict[args.dataset]
+    img_size = img_size_dict[args.dataset]
     if args.dataset in ["imagenet"]:
         if args.pretrained:
             logprint("=> using pre-trained model '{}'".format(args.arch))
@@ -108,10 +111,10 @@ def main_worker(gpu, ngpus_per_node, args):
             logprint("=> creating model '{}'".format(args.arch))
             model = models.__dict__[args.arch]()
     elif args.dataset in ['imagenet_subset_200']:
-        model = models.__dict__[args.arch](num_classes=200)
+        model = models.__dict__[args.arch](num_classes=num_classes)
     # @mst: added cifar10, 100 dataset
     elif args.dataset in ['cifar10', 'cifar100']:
-        model = model_dict[args.arch]()
+        model = model_dict[args.arch](num_classes=num_classes, use_bn=args.use_bn)
     else:
         raise NotImplementedError
 
@@ -261,9 +264,9 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # get the original unpruned model statistics
         n_params_original = get_n_params(model)
-        n_flops_original = get_n_flops(model, input_res=args.img_size)
+        n_flops_original = get_n_flops(model, input_res=img_size)
         n_params_original_v2 = get_n_params_(model) # test new func, the old one will be removed
-        n_flops_original_v2 = get_n_flops_(model, img_size=args.img_size) # test new func, the old one will be removed
+        n_flops_original_v2 = get_n_flops_(model, img_size=img_size) # test new func, the old one will be removed
 
         prune_state = ''
         if args.resume_path:
@@ -342,7 +345,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # get the statistics of pruned model
         n_params_now = get_n_params(model)
-        n_flops_now = get_n_flops(model, input_res=args.img_size)
+        n_flops_now = get_n_flops(model, input_res=img_size)
         logprint("==> n_params_original: {:>7.4f}M, n_flops_original: {:>7.4f}G".format(n_params_original, n_flops_original))
         logprint("==> n_params_original_v2: {:>7.4f}M, n_flops_original_v2: {:>7.4f}G".format(n_params_original_v2/1e6, n_flops_original_v2/1e9))
         logprint("==> n_params_now:      {:>7.4f}M, n_flops_now:      {:>7.4f}G".format(n_params_now, n_flops_now))
