@@ -48,10 +48,9 @@ best_acc1_epoch = 0
 # ---
 
 def main():
-    # --- @mst
-    # move this to above, won't influence the original functions
+    # @mst: move this to above, won't influence the original functions
     # args = parser.parse_args()
-    # ---
+    
     if args.seed is not None:
         random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -208,7 +207,7 @@ def main_worker(gpu, ngpus_per_node, args):
         val_loader = loader.test_loader
     else:   
         traindir = os.path.join(args.data_path, args.dataset, 'train')
-        folder = 'val3' if args.debug else 'val' # --- @mst
+        folder = 'val3' if args.debug else 'val' # @mst
         valdir = os.path.join(args.data_path, args.dataset, folder)
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                         std=[0.229, 0.224, 0.225])
@@ -357,9 +356,13 @@ def main_worker(gpu, ngpus_per_node, args):
         netprint(model, 'model that was just pruned')
         if prune_state != 'finetune':
             t1 = time.time()
-            acc1, acc5 = validate(val_loader, model, criterion, args)
-            accprint("Acc1 = %.4f Acc5 = %.4f (test time = %.2fs) Just got pruned model, about to finetune" % 
-                (acc1, acc5, time.time()-t1))
+            acc1, acc5, loss_test = validate(val_loader, model, criterion, args)
+            if args.dataset != 'imagenet': # too costly, not test for now
+                acc1_train, acc5_train, loss_train = validate(train_loader, model, criterion, args)
+            else:
+                acc1_train, acc5_train, loss_train = -1, -1, -1
+            accprint("Acc1 %.4f Acc5 %.4f Loss_test %.4f | Acc1_train %.4f Acc5_train %.4f Loss_train %.4f | (test_time %.2fs) Just got pruned model, about to finetune" % 
+                (acc1, acc5, loss_test, acc1_train, acc5_train, loss_train, time.time()-t1))
             state = {'arch': args.arch,
                     'model': model,
                     'state_dict': model.state_dict(),
@@ -380,8 +383,8 @@ def main_worker(gpu, ngpus_per_node, args):
     # ---
 
     if args.evaluate:
-        acc1, acc5 = validate(val_loader, model, criterion, args)
-        logprint('Acc1 %.4f Acc5 %.4f' % (acc1, acc5))
+        acc1, acc5, loss_test = validate(val_loader, model, criterion, args)
+        logprint('Acc1 %.4f Acc5 %.4f Loss_test %.4f' % (acc1, acc5, loss_test))
         return
 
     # finetune
@@ -389,14 +392,14 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         
-        # --- @mst: use our own lr scheduler
+        # @mst: use our own lr scheduler
         lr = lr_scheduler(optimizer, epoch) if args.method else adjust_learning_rate(optimizer, epoch, args)
         logprint("==> Set lr = %s @ Epoch %d " % (lr, epoch))
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
 
-        # --- @mst: check weights magnitude
+        # @mst: check weights magnitude
         if args.method.endswith("Reg") and 'pruner' in locals():
             for name, m in model.named_modules():
                 if name in pruner.reg:
@@ -410,22 +413,25 @@ def main_worker(gpu, ngpus_per_node, args):
                         print(tmp)
 
         # evaluate on validation set
-        acc1, acc5 = validate(val_loader, model, criterion, args) # --- @mst: added acc5
+        acc1, acc5, loss_test = validate(val_loader, model, criterion, args) # @mst: added acc5
+        if args.dataset != 'imagenet': # too costly, not test for now
+            acc1_train, acc5_train, loss_train = validate(train_loader, model, criterion, args)
+        else:
+            acc1_train, acc5_train, loss_train = -1, -1, -1
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
         if is_best:
             best_acc1_epoch = epoch
-
-        accprint("Acc1 %.4f Acc5 %.4f Epoch %d (after update) (Best_Acc1 %.4f @ Epoch %d) lr %s" % 
-            (acc1, acc5, epoch, best_acc1, best_acc1_epoch, lr))
+        accprint("Acc1 %.4f Acc5 %.4f Loss_test %.4f | Acc1_train %.4f Acc5_train %.4f Loss_train %.4f | Epoch %d (Best_Acc1 %.4f @ Best_Acc1_Epoch %d) lr %s" % 
+            (acc1, acc5, loss_test, acc1_train, acc5_train, loss_train, epoch, best_acc1, best_acc1_epoch, lr))
         logprint('predicted finish time: %s' % timer())
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
             if args.method:
-                # --- @mst: use our own save func
+                # @mst: use our own save func
                 state = {'epoch': epoch + 1,
                         'arch': args.arch,
                         'model': model,
@@ -448,11 +454,6 @@ def main_worker(gpu, ngpus_per_node, args):
                     'optimizer' : optimizer.state_dict(),
                 }, is_best)
         
-        acc_threshold = 93.355
-        if best_acc1 >= acc_threshold:
-            logprint('Acc1 > %s, early stopped' % acc_threshold)
-            exit(0)
-            
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
@@ -491,7 +492,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         loss.backward()
         optimizer.step()
 
-        # --- @mst: after update, zero out pruned weights
+        # @mst: after update, zero out pruned weights
         if args.method and args.wg == 'weight':
             apply_mask_forward(model)
 
@@ -548,13 +549,13 @@ def validate(val_loader, model, criterion, args):
         # TODO: this should also be done with the ProgressMeter
         # logprint(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
         #       .format(top1=top1, top5=top5))
-        # --- @mst: commented because we will use another print outside 'validate'
+        # @mst: commented because we will use another print outside 'validate'
     logprint("time compute: %.4f ms" % (np.mean(time_compute)*1000))
 
     # change back to original model state if necessary
     if train_state:
         model.train()
-    return top1.avg, top5.avg # --- @mst: added returning top5 acc
+    return top1.avg, top5.avg, losses.avg # @mst: added returning top5 acc and loss
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
@@ -562,7 +563,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
 
-# --- @mst: use our own save model function
+# @mst: use our own save model function
 def save_model(state, is_best=False, mark=''):
     out = pjoin(logger.weights_path, "checkpoint.pth")
     torch.save(state, out)
@@ -637,7 +638,7 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
-# --- @mst: zero out pruned weights for unstructured pruning
+# @mst: zero out pruned weights for unstructured pruning
 def apply_mask_forward(model):
     global mask
     for name, m in model.named_modules():
