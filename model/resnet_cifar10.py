@@ -133,24 +133,24 @@ class ResNet(nn.Module):
 
 
 def resnet20(num_classes=10, **kwargs):
-    return ResNet(BasicBlock, [3, 3, 3])
+    return ResNet(BasicBlock, [3, 3, 3], num_classes=num_classes)
 
 
 def resnet32(num_classes=10, **kwargs):
-    return ResNet(BasicBlock, [5, 5, 5])
+    return ResNet(BasicBlock, [5, 5, 5], num_classes=num_classes)
 
 
 def resnet44(num_classes=10, **kwargs):
-    return ResNet(BasicBlock, [7, 7, 7])
+    return ResNet(BasicBlock, [7, 7, 7], num_classes=num_classes)
 
 
 def resnet56(num_classes=10, **kwargs):
-    return ResNet(BasicBlock, [9, 9, 9])
+    return ResNet(BasicBlock, [9, 9, 9], num_classes=num_classes)
 
 
 def resnet110(num_classes=10, **kwargs):
-    return ResNet(BasicBlock, [18, 18, 18])
+    return ResNet(BasicBlock, [18, 18, 18], num_classes=num_classes)
 
 
 def resnet1202(num_classes=10, **kwargs):
-    return ResNet(BasicBlock, [200, 200, 200])
+    return ResNet(BasicBlock, [200, 200, 200], num_classes=num_classes)

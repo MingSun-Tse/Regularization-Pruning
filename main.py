@@ -103,20 +103,15 @@ def main_worker(gpu, ngpus_per_node, args):
     num_classes = num_classes_dict[args.dataset]
     img_size = img_size_dict[args.dataset]
     num_channels = 1 if args.dataset == 'mnist' else 3
-    if args.dataset in ["imagenet"]:
+    if args.dataset in ["imagenet", "imagenet_subset_200"]:
         if args.pretrained:
             logprint("=> using pre-trained model '{}'".format(args.arch))
-            model = models.__dict__[args.arch](pretrained=True)
+            model = models.__dict__[args.arch](num_classes=num_classes, pretrained=True)
         else:
             logprint("=> creating model '{}'".format(args.arch))
-            model = models.__dict__[args.arch]()
-    elif args.dataset in ['imagenet_subset_200']:
-        model = models.__dict__[args.arch](num_classes=num_classes)
-    # @mst: added cifar10, 100 dataset
-    elif args.dataset in ['cifar10', 'cifar100', 'mnist']:
+            model = models.__dict__[args.arch](num_classes=num_classes)
+    else: # @mst: added non-imagenet models
         model = model_dict[args.arch](num_classes=num_classes, num_channels=num_channels, use_bn=args.use_bn)
-    else:
-        raise NotImplementedError
 
     # @mst: save the model after initialization if necessary
     if args.save_init_model:
