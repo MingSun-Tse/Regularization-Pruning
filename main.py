@@ -102,6 +102,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # create model
     num_classes = num_classes_dict[args.dataset]
     img_size = img_size_dict[args.dataset]
+    num_channels = 1 if args.dataset == 'mnist' else 3
     if args.dataset in ["imagenet"]:
         if args.pretrained:
             logprint("=> using pre-trained model '{}'".format(args.arch))
@@ -112,8 +113,8 @@ def main_worker(gpu, ngpus_per_node, args):
     elif args.dataset in ['imagenet_subset_200']:
         model = models.__dict__[args.arch](num_classes=num_classes)
     # @mst: added cifar10, 100 dataset
-    elif args.dataset in ['cifar10', 'cifar100']:
-        model = model_dict[args.arch](num_classes=num_classes, use_bn=args.use_bn)
+    elif args.dataset in ['cifar10', 'cifar100', 'mnist']:
+        model = model_dict[args.arch](num_classes=num_classes, num_channels=num_channels, use_bn=args.use_bn)
     else:
         raise NotImplementedError
 
@@ -174,6 +175,7 @@ def main_worker(gpu, ngpus_per_node, args):
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
+
 
     # optionally resume from a checkpoint
     # --- @mst: we will use our option '--resume_path', keep this for back-compatibility
@@ -262,10 +264,10 @@ def main_worker(gpu, ngpus_per_node, args):
             train_loader_prune = loader.train_loader_prune
 
         # get the original unpruned model statistics
-        n_params_original = get_n_params(model)
-        n_flops_original = get_n_flops(model, input_res=img_size)
+        # n_params_original = get_n_params(model) # old imple, deprecated 
+        # n_flops_original = get_n_flops(model, input_res=img_size, n_channel=num_channels)
         n_params_original_v2 = get_n_params_(model) # test new func, the old one will be removed
-        n_flops_original_v2 = get_n_flops_(model, img_size=img_size) # test new func, the old one will be removed
+        n_flops_original_v2 = get_n_flops_(model, img_size=img_size, n_channel=num_channels) # test new func, the old one will be removed
 
         prune_state = ''
         if args.resume_path:
@@ -338,18 +340,21 @@ def main_worker(gpu, ngpus_per_node, args):
                 logprint('==> zero out pruned weight before finetune')
 
             # since model is new, we need a new optimizer
-            optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                        momentum=args.momentum,
-                                        weight_decay=args.weight_decay)
+            if args.arch == 'lenet5':
+                optimizer = torch.optim.Adam(model.parameters(), args.lr)
+            else:
+                optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                            momentum=args.momentum,
+                                            weight_decay=args.weight_decay)
 
         # get the statistics of pruned model
-        n_params_now = get_n_params(model)
-        n_flops_now = get_n_flops(model, input_res=img_size)
-        logprint("==> n_params_original: {:>7.4f}M, n_flops_original: {:>7.4f}G".format(n_params_original, n_flops_original))
+        n_params_now_v2 = get_n_params_(model)
+        n_flops_now_v2 = get_n_flops_(model, img_size=img_size, n_channel=num_channels)
+        # logprint("==> n_params_original: {:>7.4f}M, n_flops_original: {:>7.4f}G".format(n_params_original, n_flops_original))
         logprint("==> n_params_original_v2: {:>7.4f}M, n_flops_original_v2: {:>7.4f}G".format(n_params_original_v2/1e6, n_flops_original_v2/1e9))
-        logprint("==> n_params_now:      {:>7.4f}M, n_flops_now:      {:>7.4f}G".format(n_params_now, n_flops_now))
-        ratio_param = (n_params_original - n_params_now) / n_params_original
-        ratio_flops = (n_flops_original - n_flops_now) / n_flops_original
+        logprint("==> n_params_now_v2:      {:>7.4f}M, n_flops_now_v2:      {:>7.4f}G".format(n_params_now_v2, n_flops_now_v2))
+        ratio_param = (n_params_original_v2 - n_params_now_v2) / n_params_original_v2
+        ratio_flops = (n_flops_original_v2 - n_flops_now_v2) / n_flops_original_v2
         logprint("==> reduction ratio -- params: {:>5.2f}%, flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, ratio_flops*100, 1.0 / (1-ratio_flops)))
         
         # test and save just pruned model

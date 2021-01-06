@@ -237,7 +237,7 @@ class MetaPruner:
         arch = self.args.arch
         if arch.startswith('resnet'):
             get_layer_pr = self._get_layer_pr_resnet
-        elif arch.startswith("alexnet") or arch.startswith("vgg"):
+        elif arch.startswith("vgg") or arch in ['alexnet', 'lenet5']:
             get_layer_pr = self._get_layer_pr_vgg
 
         self.pr = {}

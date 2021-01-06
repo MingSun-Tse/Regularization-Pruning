@@ -11,7 +11,7 @@ parser = argparse.ArgumentParser(description='Regularization-Pruning PyTorch')
 parser.add_argument('--data', metavar='DIR', # @mst: 'data' -> '--data'
                     help='path to dataset')
 parser.add_argument('--dataset',
-                    help='dataset name', choices=['cifar10', 'cifar100', 'imagenet', 'imagenet_subset_200'])
+                    help='dataset name', choices=['mnist', 'cifar10', 'cifar100', 'imagenet', 'imagenet_subset_200'])
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     # choices=model_names, # @mst: We will use more than the imagenet models, so remove this
                     help='model architecture: ' +
@@ -63,6 +63,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
 # @mst
 import os
 from utils import strlist_to_list, strdict_to_dict, check_path, parse_prune_ratio_vgg, merge_args
+from model import num_layers
 pjoin = os.path.join
 
 # routine params
@@ -132,16 +133,11 @@ for k, v in args_tmp.items():
 
 # parse for layer-wise prune ratio
 # stage_pr is a list of float, skip_layers is a list of strings
-num_layers = {
-    'alexnet': 8,
-    'vgg16': 16,
-    'vgg19': 19,
-}
 if args.stage_pr:
     if args.arch.startswith('resnet'):
         args.stage_pr = strlist_to_list(args.stage_pr, float) # example: [0, 0.4, 0.5, 0]
         args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [2.3.1, 3.1]
-    elif args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
+    elif args.arch.startswith('vgg') or args.arch in ['alexnet', 'lenet5']:
         args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=num_layers[args.arch]) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
         args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
     else:

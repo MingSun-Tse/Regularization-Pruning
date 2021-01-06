@@ -27,11 +27,12 @@ defaultcfg = {
 
 
 class VGG(nn.Module):
-    def __init__(self, depth=19, num_classes=10, use_bn=True, init_weights=True, cfg=None):
+    def __init__(self, depth=19, num_classes=10, num_channels=3, use_bn=True, init_weights=True, cfg=None):
         super(VGG, self).__init__()
         if cfg is None:
             cfg = defaultcfg[depth]
 
+        self.num_channels = num_channels
         self.features = self.make_layers(cfg, use_bn)
         self.classifier = nn.Linear(cfg[-1], num_classes)
         if init_weights:
@@ -39,7 +40,7 @@ class VGG(nn.Module):
 
     def make_layers(self, cfg, batch_norm=False):
         layers = []
-        in_channels = 3
+        in_channels = self.num_channels
         for v in cfg:
             if v == 'M':
                 layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
@@ -74,9 +75,9 @@ class VGG(nn.Module):
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
 
-def vgg16(num_classes=10, use_bn=True):
-    return VGG(16, num_classes=num_classes, use_bn=use_bn)
+def vgg16(num_classes=10, num_channels=3, use_bn=True):
+    return VGG(16, num_classes=num_classes, num_channels=num_channels, use_bn=use_bn)
     
-def vgg19(num_classes=10, use_bn=True):
-    return VGG(19, num_classes=num_classes, use_bn=use_bn)
+def vgg19(num_classes=10, num_channels=3, use_bn=True):
+    return VGG(19, num_classes=num_classes, num_channels=num_channels, use_bn=use_bn)
 
