@@ -26,7 +26,7 @@ class LeNet5(nn.Module):
         output = self.maxpool2(output)
         output = self.conv3(output)
         output = self.relu3(output)
-        feature = output.view(-1, 120)
+        feature = output.view(output.size(0), -1)
         output = self.fc1(feature)
         output = self.relu4(output)
         output = self.fc2(output)
