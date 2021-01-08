@@ -74,6 +74,11 @@ class VGG(nn.Module):
             elif isinstance(m, nn.Linear):
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
+def vgg11(num_classes=10, num_channels=3, use_bn=True):
+    return VGG(11, num_classes=num_classes, num_channels=num_channels, use_bn=use_bn)
+
+def vgg13(num_classes=10, num_channels=3, use_bn=True):
+    return VGG(13, num_classes=num_classes, num_channels=num_channels, use_bn=use_bn)
 
 def vgg16(num_classes=10, num_channels=3, use_bn=True):
     return VGG(16, num_classes=num_classes, num_channels=num_channels, use_bn=use_bn)

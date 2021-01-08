@@ -421,7 +421,7 @@ class Pruner(MetaPruner):
                 
                 # test
                 if total_iter % self.args.test_interval == 0:
-                    acc1, acc5 = self.test(self.model)
+                    acc1, acc5, *_ = self.test(self.model)
                     self.accprint("Acc1 = %.4f Acc5 = %.4f Iter = %d (before update) [prune_state = %s, method = %s]" % 
                         (acc1, acc5, total_iter, self.prune_state, self.args.method))
                 
