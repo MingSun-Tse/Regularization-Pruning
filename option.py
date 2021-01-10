@@ -102,6 +102,8 @@ parser.add_argument('--mag_ratio_limit', type=float, default=1000)
 parser.add_argument('--base_pr_model', type=str, default=None, help='the model that provides layer-wise pr')
 parser.add_argument('--inherit_pruned', type=str, default='index', choices=['index', 'pr'], 
     help='when --base_pr_model is provided, we can choose to inherit the pruned index or only the pruning ratio (pr)')
+parser.add_argument('--model_noise_std', type=float, default=0, help='add Gaussian noise to model weights')
+parser.add_argument('--model_noise_num', type=int, default=10)
 
 # GReg method related (default setting is for ImageNet):
 parser.add_argument('--batch_size_prune', type=int, default=64)

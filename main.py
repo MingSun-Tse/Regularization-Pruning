@@ -32,6 +32,7 @@ from importlib import import_module
 from data import Data
 from logger import Logger
 from utils import get_n_params, get_n_flops, get_n_params_, get_n_flops_, PresetLRScheduler, Timer
+from utils import add_noise_to_model
 from model import model_dict
 from data import num_classes_dict, img_size_dict
 from pruner import pruner_dict
@@ -518,7 +519,17 @@ def validate(val_loader, model, criterion, args):
 
     # switch to evaluate mode
     model.eval()
-    
+
+    # @mst: add noise to model
+    model_ensemble = []
+    if args.model_noise_std:
+        for i in range(args.model_noise_num):
+            noisy_model = add_noise_to_model(model, std=args.model_noise_std)
+            model_ensemble.append(noisy_model)
+        logprint('==> added Gaussian noise to model weights (std=%s, num=%d)' % (args.model_noise_std, args.model_noise_num))
+    else:
+        model_ensemble.append(model)
+
     time_compute = []
     with torch.no_grad():
         end = time.time()
@@ -529,7 +540,10 @@ def validate(val_loader, model, criterion, args):
 
             # compute output
             t1 = time.time()
-            output = model(images)
+            output = 0
+            for model in model_ensemble: # @mst: test model ensemble
+                output += model(images)
+            output /= len(model_ensemble)
             time_compute.append((time.time() - t1) / images.size(0))
             loss = criterion(output, target)
 
