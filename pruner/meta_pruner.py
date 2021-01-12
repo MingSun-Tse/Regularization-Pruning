@@ -45,17 +45,18 @@ class Layer:
                 print('!Parsing the layer name failed: %s. Please check.' % name)
                 
 class MetaPruner:
-    def __init__(self, model, args, logger, runner):
+    def __init__(self, model, args, logger, passer):
         self.model = model
         self.args = args
         self.logger = logger
         self.logprint = logger.log_printer.logprint
         self.accprint = logger.log_printer.accprint
         self.netprint = logger.log_printer.netprint
-        self.test = lambda net: runner.test(runner.test_loader, net, runner.criterion, runner.args)
-        self.train_loader = runner.train_loader
-        self.criterion = runner.criterion
-        self.save = runner.save
+        self.test = lambda net: passer.test(passer.test_loader, net, passer.criterion, passer.args)
+        self.train_loader = passer.train_loader
+        self.criterion = passer.criterion
+        self.save = passer.save
+        self.is_single_branch = passer.is_single_branch
         
         self.layers = OrderedDict()
         self._register_layers()
@@ -234,11 +235,10 @@ class MetaPruner:
         return pr
     
     def get_pr(self):
-        arch = self.args.arch
-        if arch.startswith('resnet'):
-            get_layer_pr = self._get_layer_pr_resnet
-        elif arch.startswith("vgg") or arch in ['alexnet', 'lenet5']:
+        if self.is_single_branch(self.args.arch):
             get_layer_pr = self._get_layer_pr_vgg
+        else:
+            get_layer_pr = self._get_layer_pr_resnet
 
         self.pr = {}
         if self.args.stage_pr: # stage_pr may be None (in the case that base_pr_model is provided)

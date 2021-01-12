@@ -63,7 +63,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
 # @mst
 import os
 from utils import strlist_to_list, strdict_to_dict, check_path, parse_prune_ratio_vgg, merge_args
-from model import num_layers
+from model import num_layers, is_single_branch
 pjoin = os.path.join
 
 # routine params
@@ -136,14 +136,12 @@ for k, v in args_tmp.items():
 # parse for layer-wise prune ratio
 # stage_pr is a list of float, skip_layers is a list of strings
 if args.stage_pr:
-    if args.arch.startswith('resnet'):
-        args.stage_pr = strlist_to_list(args.stage_pr, float) # example: [0, 0.4, 0.5, 0]
-        args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [2.3.1, 3.1]
-    elif args.arch.startswith('vgg') or args.arch in ['alexnet', 'lenet5']:
+    if is_single_branch(args.arch): # e.g., alexnet, vgg
         args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=num_layers[args.arch]) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
         args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
-    else:
-        raise NotImplementedError
+    else: # e.g., resnet
+        args.stage_pr = strlist_to_list(args.stage_pr, float) # example: [0, 0.4, 0.5, 0]
+        args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [2.3.1, 3.1]
 else:
     assert args.base_pr_model, 'If stage_pr is not provided, base_pr_model must be provided'
 

@@ -33,7 +33,7 @@ from data import Data
 from logger import Logger
 from utils import get_n_params, get_n_flops, get_n_params_, get_n_flops_, PresetLRScheduler, Timer
 from utils import add_noise_to_model
-from model import model_dict
+from model import model_dict, is_single_branch
 from data import num_classes_dict, img_size_dict
 from pruner import pruner_dict
 from option import args
@@ -321,6 +321,7 @@ def main_worker(gpu, ngpus_per_node, args):
             passer.criterion = criterion
             passer.args = args
             passer.save = save_model
+            passer.is_single_branch = is_single_branch
             # if args.method in ['GReg-1', 'GReg-2']:
             #     module = 'pruner.reg_pruner'
             # else:
@@ -336,9 +337,11 @@ def main_worker(gpu, ngpus_per_node, args):
                 logprint('==> zero out pruned weight before finetune')
 
             # since model is new, we need a new optimizer
-            if args.arch == 'lenet5':
+            if args.arch.startswith('lenet'):
+                logprint('==> Using Adam optimizer')
                 optimizer = torch.optim.Adam(model.parameters(), args.lr)
             else:
+                logprint('==> Using SGD optimizer')
                 optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                             momentum=args.momentum,
                                             weight_decay=args.weight_decay)
@@ -359,7 +362,7 @@ def main_worker(gpu, ngpus_per_node, args):
             t1 = time.time()
             acc1, acc5, loss_test = validate(val_loader, model, criterion, args)
             if args.dataset != 'imagenet': # too costly, not test for now
-                acc1_train, acc5_train, loss_train = validate(train_loader, model, criterion, args)
+                acc1_train, acc5_train, loss_train = validate(train_loader, model, criterion, args, noisy_model_ensemble=args.model_noise_std)
             else:
                 acc1_train, acc5_train, loss_train = -1, -1, -1
             accprint("Acc1 %.4f Acc5 %.4f Loss_test %.4f | Acc1_train %.4f Acc5_train %.4f Loss_train %.4f | (test_time %.2fs) Just got pruned model, about to finetune" % 
@@ -505,7 +508,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
             progress.display(i)
 
 
-def validate(val_loader, model, criterion, args):
+def validate(val_loader, model, criterion, args, noisy_model_ensemble=False):
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -522,7 +525,7 @@ def validate(val_loader, model, criterion, args):
 
     # @mst: add noise to model
     model_ensemble = []
-    if args.model_noise_std:
+    if noisy_model_ensemble:
         for i in range(args.model_noise_num):
             noisy_model = add_noise_to_model(model, std=args.model_noise_std)
             model_ensemble.append(noisy_model)
