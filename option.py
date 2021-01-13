@@ -85,7 +85,7 @@ parser.add_argument('--start_epoch', type=int, default=0)
 parser.add_argument('--save_init_model', action="store_true", help='save the model after initialization')
 
 # general pruning method related
-parser.add_argument('--method', type=str, default="", choices=['', 'L1', 'GReg-1', 'GReg-2'], 
+parser.add_argument('--method', type=str, default="", choices=['', 'L1', 'GReg-1', 'GReg-2', 'Oracle'], 
     help='pruning method name; default is "", implying the original training without any pruning')
 parser.add_argument('--stage_pr', type=str, default="", help='to appoint layer-wise pruning ratio')
 parser.add_argument('--skip_layers', type=str, default="", help='layer id to skip when pruning')
@@ -104,6 +104,7 @@ parser.add_argument('--inherit_pruned', type=str, default='index', choices=['ind
     help='when --base_pr_model is provided, we can choose to inherit the pruned index or only the pruning ratio (pr)')
 parser.add_argument('--model_noise_std', type=float, default=0, help='add Gaussian noise to model weights')
 parser.add_argument('--model_noise_num', type=int, default=10)
+parser.add_argument('--oracle_pruning', action="store_true")
 
 # GReg method related (default setting is for ImageNet):
 parser.add_argument('--batch_size_prune', type=int, default=64)

@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 pjoin = os.path.join
 
 class Pruner(MetaPruner):
-    def __init__(self, model, args, logger, runner):
-        super(Pruner, self).__init__(model, args, logger, runner)
+    def __init__(self, model, args, logger, passer):
+        super(Pruner, self).__init__(model, args, logger, passer)
 
         # Reg related variables
         self.reg = {}

@@ -174,7 +174,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
 
     # optionally resume from a checkpoint
-    # --- @mst: we will use our option '--resume_path', keep this for back-compatibility
+    # @mst: we will use our option '--resume_path', keep this simply for back-compatibility
     if args.resume:
         if os.path.isfile(args.resume):
             logprint("=> loading checkpoint '{}'".format(args.resume))
@@ -247,8 +247,7 @@ def main_worker(gpu, ngpus_per_node, args):
             ]))
         print('number of test example: %d' % len(test_set))
 
-    # --- @mst
-    # Structured pruning is basically equivalent to providing a new weight initialization before finetune,
+    # --- @mst: Structured pruning is basically equivalent to providing a new weight initialization before finetune,
     # so just before training, conduct pruning to obtain a new model.
     if args.method:
         if args.dataset in ['imagenet', 'imagenet_subset_200']:
@@ -322,11 +321,6 @@ def main_worker(gpu, ngpus_per_node, args):
             passer.args = args
             passer.save = save_model
             passer.is_single_branch = is_single_branch
-            # if args.method in ['GReg-1', 'GReg-2']:
-            #     module = 'pruner.reg_pruner'
-            # else:
-            #     module = 'pruner.%s_pruner' % args.method.lower()
-            # module = import_module(module)
             module = pruner_dict[args.method]
 
             pruner = module.Pruner(model, args, logger, passer)
@@ -351,10 +345,12 @@ def main_worker(gpu, ngpus_per_node, args):
         n_flops_now_v2 = get_n_flops_(model, img_size=img_size, n_channel=num_channels)
         # logprint("==> n_params_original: {:>7.4f}M, n_flops_original: {:>7.4f}G".format(n_params_original, n_flops_original))
         logprint("==> n_params_original_v2: {:>7.4f}M, n_flops_original_v2: {:>7.4f}G".format(n_params_original_v2/1e6, n_flops_original_v2/1e9))
-        logprint("==> n_params_now_v2:      {:>7.4f}M, n_flops_now_v2:      {:>7.4f}G".format(n_params_now_v2, n_flops_now_v2))
+        logprint("==> n_params_now_v2:      {:>7.4f}M, n_flops_now_v2:      {:>7.4f}G".format(n_params_now_v2/1e6, n_flops_now_v2/1e9))
         ratio_param = (n_params_original_v2 - n_params_now_v2) / n_params_original_v2
         ratio_flops = (n_flops_original_v2 - n_flops_now_v2) / n_flops_original_v2
-        logprint("==> reduction ratio -- params: {:>5.2f}%, flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, ratio_flops*100, 1.0 / (1-ratio_flops)))
+        compression_ratio = 1.0 / (1 - ratio_param)
+        speedup_ratio = 1.0 / (1 - ratio_flops)
+        logprint("==> reduction ratio -- params: {:>5.2f}% (compression {:>.2f}x), flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, compression_ratio, ratio_flops*100, speedup_ratio))
         
         # test and save just pruned model
         netprint(model, 'model that was just pruned')
@@ -560,14 +556,15 @@ def validate(val_loader, model, criterion, args, noisy_model_ensemble=False):
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if i % args.print_freq == 0:
-                progress.display(i)
+            # if i % args.print_freq == 0:
+            #     progress.display(i)
+            # @mst: commented because of too much log
 
         # TODO: this should also be done with the ProgressMeter
         # logprint(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
         #       .format(top1=top1, top5=top5))
         # @mst: commented because we will use another print outside 'validate'
-    logprint("time compute: %.4f ms" % (np.mean(time_compute)*1000))
+    # logprint("time compute: %.4f ms" % (np.mean(time_compute)*1000))
 
     # change back to original model state if necessary
     if train_state:
@@ -624,7 +621,7 @@ class ProgressMeter(object):
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        logprint('\t'.join(entries))
+        print('\t'.join(entries))
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
