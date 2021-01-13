@@ -170,7 +170,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
-                                weight_decay=args.weight_decay)
+                                weight_decay=args.weight_decay) # @mst: This solver is not be really used. We will use our own.
 
 
     # optionally resume from a checkpoint
@@ -271,9 +271,14 @@ def main_worker(gpu, ngpus_per_node, args):
             if prune_state == 'finetune':
                 model = state['model'].cuda()
                 model.load_state_dict(state['state_dict'])
-                optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                            momentum=args.momentum,
-                                            weight_decay=args.weight_decay)
+                if args.arch.startswith('lenet'):
+                    logprint('==> Using Adam optimizer')
+                    optimizer = torch.optim.Adam(model.parameters(), args.lr)
+                else:
+                    logprint('==> Using SGD optimizer')
+                    optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                                momentum=args.momentum,
+                                                weight_decay=args.weight_decay)
                 optimizer.load_state_dict(state['optimizer'])
                 args.start_epoch = state['epoch']
                 logprint("==> Load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
@@ -301,9 +306,14 @@ def main_worker(gpu, ngpus_per_node, args):
                 model = pruner.prune()
             '''
             model.load_state_dict(state['state_dict'])
-            optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                        momentum=args.momentum,
-                                        weight_decay=args.weight_decay)
+            if args.arch.startswith('lenet'):
+                logprint('==> Using Adam optimizer')
+                optimizer = torch.optim.Adam(model.parameters(), args.lr)
+            else:
+                logprint('==> Using SGD optimizer')
+                optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                            momentum=args.momentum,
+                                            weight_decay=args.weight_decay)
             prune_state = 'finetune'
             logprint("==> load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
                     args.directly_ft_weights, args.start_epoch, prune_state))
