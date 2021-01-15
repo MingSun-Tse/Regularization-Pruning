@@ -48,6 +48,7 @@ class Pruner(MetaPruner):
             
             *_, pruned_train_loss = self.test_trainset(model)
             pruned_loss.append(pruned_train_loss)
+            self.logprint('')
             self.logprint('[%d/%d] pruned_index_pair {%s}' % (cnt, len(pruned_index_pairs), pair))
             self.logprint('[%d/%d] pruned_train_loss %.6f' % (cnt, len(pruned_index_pairs), pruned_train_loss))
 

@@ -160,7 +160,7 @@ def main_worker(gpu, ngpus_per_node, args):
         logprint("==> Load pretrained model successfully: '%s'" % args.base_model_path)
         
     # @mst: print base model arch
-    netprint(model, 'base model arch')
+    netprint(model, comment='base model arch')
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
@@ -287,21 +287,6 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.directly_ft_weights:
             state = torch.load(args.directly_ft_weights)
             model = state['model'].cuda()
-            ''' Will be removed soon!
-            if 'model' in state:
-                model = state['model'].cuda()
-            else: # back-compatible to old saved pth, in which 'model' is not saved. Temporary use, will be removed!
-                class passer: pass
-                passer.test = validate
-                passer.test_loader = val_loader
-                passer.train_loader = train_loader_prune
-                passer.criterion = criterion
-                passer.args = args
-                passer.save = save_model
-                import pruner.l1_pruner as p
-                pruner = p.Pruner(model, args, logger, passer)
-                model = pruner.prune()
-            '''
             model.load_state_dict(state['state_dict'])
             prune_state = 'finetune'
             logprint("==> load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
@@ -343,7 +328,7 @@ def main_worker(gpu, ngpus_per_node, args):
         logprint("==> reduction ratio -- params: {:>5.2f}% (compression {:>.2f}x), flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, compression_ratio, ratio_flops*100, speedup_ratio))
         
         # test and save just pruned model
-        netprint(model, 'model that was just pruned')
+        netprint(model, comment='model that was just pruned')
         if prune_state != 'finetune':
             t1 = time.time()
             acc1, acc5, loss_test = validate(val_loader, model, criterion, args)
