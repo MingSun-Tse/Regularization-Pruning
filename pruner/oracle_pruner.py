@@ -11,7 +11,9 @@ class Pruner(MetaPruner):
     def __init__(self, model, args, logger, passer):
         super(Pruner, self).__init__(model, args, logger, passer)
         self.test_trainset = lambda net: passer.test(passer.train_loader, net, passer.criterion, passer.args)
-        
+        self.finetune = lambda net: passer.finetune(net, passer.train_loader, passer.test_loader, passer.train_sampler, 
+                                passer.criterion, passer.pruner, best_acc1=0, best_acc1_epoch=0, args=passer.args, print_log=False)
+
     def _get_kept_wg_oracle(self):
         # get all the possible wg combinations to prune
         combinations_layer = [] # pruned index combination of each layer
@@ -28,7 +30,7 @@ class Pruner(MetaPruner):
         
         # orable pruning
         pruned_index_pairs = list(itertools.product(*combinations_layer))
-        self.logprint('oracle pruning: %d pairs of pruned index to ablate' % len(pruned_index_pairs))
+        self.logprint('==> Start oracle pruning: %d pairs of pruned index to ablate' % len(pruned_index_pairs))
         pruned_loss = []
         cnt = 0
         for pair in pruned_index_pairs: # for each pruned index pair, get a pruned loss
@@ -43,13 +45,20 @@ class Pruner(MetaPruner):
                     else:
                         m.weight.data[pruned_index,:] = 0 # FC layer
                     cnt_m += 1
-            acc1, acc5, loss = self.test_trainset(model)
-            pruned_loss.append(loss)
-            self.logprint('[%d/%d] oracle pruning. pruned loss: %.4f' % (cnt, len(pruned_index_pairs), loss))
+            
+            *_, pruned_train_loss = self.test_trainset(model)
+            pruned_loss.append(pruned_train_loss)
+            self.logprint('[%d/%d] pruned_index_pair {%s}' % (cnt, len(pruned_index_pairs), pair))
+            self.logprint('[%d/%d] pruned_train_loss %.6f' % (cnt, len(pruned_index_pairs), pruned_train_loss))
+
+            # finetune the pruned model
+            if self.args.ft_in_oracle_pruning:
+                acc1, acc5, final_train_loss, final_test_loss = self.finetune(model) # it will return the acc/loss of the best model during finetune
+                self.logprint('[%d/%d] final_train_loss %.6f final_test_loss %.6f final_test_acc %.6f' % (cnt, len(pruned_index_pairs), final_train_loss, final_test_loss, acc1.item()))
         
         # get the pruned index pair that leads to least pruned loss
         best_pruned_index_pair = pruned_index_pairs[np.argmin(pruned_loss)]
-        self.logprint('oracle pruning. picked index pair to prune: %s, the incurred loss: %.4f' % (best_pruned_index_pair, np.min(pruned_loss)))
+        self.logprint('==> Finished oracle pruning. Picked pruned_index_pair: {%s}, its pruned_train_loss: %.6f' % (best_pruned_index_pair, np.min(pruned_loss)))
         cnt_m = 0
         for name, m in model.named_modules():
             if name in self.pr:

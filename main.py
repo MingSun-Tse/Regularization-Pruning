@@ -1,8 +1,7 @@
 '''
     This code is based on the official PyTorch ImageNet training example 'main.py'. Commit ID: 69d2798, 04/23/2020.
     URL: https://github.com/pytorch/examples/tree/master/imagenet
-    Important modified parts will be indicated by '@mst' mark.
-    We will do our best to maintain back compatibility.
+    Major modified parts will be indicated by '@mst' mark.
     Questions to @mingsun-tse (wang.huan@northeastern.edu).
 '''
 import argparse
@@ -44,8 +43,6 @@ logprint = logger.log_printer.logprint
 accprint = logger.log_printer.accprint
 netprint = logger.netprint
 timer = Timer(args.epochs)
-best_acc1 = 0
-best_acc1_epoch = 0
 # ---
 
 def main():
@@ -175,6 +172,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # optionally resume from a checkpoint
     # @mst: we will use our option '--resume_path', keep this simply for back-compatibility
+    best_acc1, best_acc1_epoch = 0, 0
     if args.resume:
         if os.path.isfile(args.resume):
             logprint("=> loading checkpoint '{}'".format(args.resume))
@@ -199,6 +197,7 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code
+    train_sampler = None
     if args.dataset not in ['imagenet', 'imagenet_subset_200']:
         loader = Data(args)
         train_loader = loader.train_loader
@@ -221,8 +220,6 @@ def main_worker(gpu, ngpus_per_node, args):
 
         if args.distributed:
             train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-        else:
-            train_sampler = None
 
         train_loader = torch.utils.data.DataLoader(
             train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
@@ -264,7 +261,7 @@ def main_worker(gpu, ngpus_per_node, args):
         n_params_original_v2 = get_n_params_(model) # test new func, the old one will be removed
         n_flops_original_v2 = get_n_flops_(model, img_size=img_size, n_channel=num_channels) # test new func, the old one will be removed
 
-        prune_state = ''
+        prune_state, pruner = '', None
         if args.resume_path:
             state = torch.load(args.resume_path)
             prune_state = state['prune_state'] # finetune or update_reg or stabilize_reg
@@ -306,14 +303,6 @@ def main_worker(gpu, ngpus_per_node, args):
                 model = pruner.prune()
             '''
             model.load_state_dict(state['state_dict'])
-            if args.arch.startswith('lenet'):
-                logprint('==> Using Adam optimizer')
-                optimizer = torch.optim.Adam(model.parameters(), args.lr)
-            else:
-                logprint('==> Using SGD optimizer')
-                optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                            momentum=args.momentum,
-                                            weight_decay=args.weight_decay)
             prune_state = 'finetune'
             logprint("==> load pretrained model successfully: '{}'. Epoch = {}. prune_state = '{}'".format(
                     args.directly_ft_weights, args.start_epoch, prune_state))
@@ -325,30 +314,21 @@ def main_worker(gpu, ngpus_per_node, args):
         if prune_state != 'finetune':
             class passer: pass # to pass arguments
             passer.test = validate
-            passer.test_loader = val_loader
+            passer.finetune = finetune
             passer.train_loader = train_loader_prune
-            passer.criterion = criterion
-            passer.args = args
+            passer.test_loader = val_loader
             passer.save = save_model
+            passer.criterion = criterion
+            passer.train_sampler = train_sampler
+            passer.pruner = pruner
+            passer.args = args
             passer.is_single_branch = is_single_branch
-            module = pruner_dict[args.method]
-
-            pruner = module.Pruner(model, args, logger, passer)
+            pruner = pruner_dict[args.method].Pruner(model, args, logger, passer)
             model = pruner.prune() # get the pruned model
             if args.wg == 'weight':
                 mask = pruner.mask
                 apply_mask_forward(model)
                 logprint('==> zero out pruned weight before finetune')
-
-            # since model is new, we need a new optimizer
-            if args.arch.startswith('lenet'):
-                logprint('==> Using Adam optimizer')
-                optimizer = torch.optim.Adam(model.parameters(), args.lr)
-            else:
-                logprint('==> Using SGD optimizer')
-                optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                            momentum=args.momentum,
-                                            weight_decay=args.weight_decay)
 
         # get the statistics of pruned model
         n_params_now_v2 = get_n_params_(model)
@@ -385,11 +365,6 @@ def main_worker(gpu, ngpus_per_node, args):
             if args.wg == 'weight':
                 state['mask'] = mask 
             save_model(state, mark="just_finished_prune")
-
-        
-        # set lr finetune schduler for finetune
-        assert args.lr_ft is not None
-        lr_scheduler = PresetLRScheduler(args.lr_ft)
     # ---
 
     if args.evaluate:
@@ -398,19 +373,39 @@ def main_worker(gpu, ngpus_per_node, args):
         return
 
     # finetune
+    finetune(model, train_loader, val_loader, train_sampler, criterion, pruner, best_acc1, best_acc1_epoch, args)
+
+# @mst
+def finetune(model, train_loader, val_loader, train_sampler, criterion, pruner, best_acc1, best_acc1_epoch, args, print_log=True):
+    # since model is new, we need a new optimizer
+    if args.arch.startswith('lenet'):
+        logprint('==> Start to finetune: using Adam optimizer')
+        optimizer = torch.optim.Adam(model.parameters(), args.lr)
+    else:
+        logprint('==> Start to finetune: using SGD optimizer')
+        optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                    momentum=args.momentum,
+                                    weight_decay=args.weight_decay)
+
+    # set lr finetune schduler for finetune
+    if args.method:
+        assert args.lr_ft is not None
+        lr_scheduler = PresetLRScheduler(args.lr_ft)
+    
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         
         # @mst: use our own lr scheduler
         lr = lr_scheduler(optimizer, epoch) if args.method else adjust_learning_rate(optimizer, epoch, args)
-        logprint("==> Set lr = %s @ Epoch %d " % (lr, epoch))
+        if print_log:
+            logprint("==> Set lr = %s @ Epoch %d " % (lr, epoch))
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        train(train_loader, model, criterion, optimizer, epoch, args, print_log=print_log)
 
-        # @mst: check weights magnitude
-        if args.method.endswith("Reg") and 'pruner' in locals():
+        # @mst: check weights magnitude during finetune
+        if args.method in ['GReg-1', 'GReg-2'] and not isinstance(pruner, type(None)):
             for name, m in model.named_modules():
                 if name in pruner.reg:
                     ix = pruner.layers[name].layer_index
@@ -433,11 +428,16 @@ def main_worker(gpu, ngpus_per_node, args):
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
         if is_best:
+            best_acc5 = acc5
             best_acc1_epoch = epoch
-        accprint("Acc1 %.4f Acc5 %.4f Loss_test %.4f | Acc1_train %.4f Acc5_train %.4f Loss_train %.4f | Epoch %d (Best_Acc1 %.4f @ Best_Acc1_Epoch %d) lr %s" % 
-            (acc1, acc5, loss_test, acc1_train, acc5_train, loss_train, epoch, best_acc1, best_acc1_epoch, lr))
-        logprint('predicted finish time: %s' % timer())
+            best_loss_train = loss_train
+            best_loss_test = loss_test
+        if print_log:
+            accprint("Acc1 %.4f Acc5 %.4f Loss_test %.4f | Acc1_train %.4f Acc5_train %.4f Loss_train %.4f | Epoch %d (Best_Acc1 %.4f @ Best_Acc1_Epoch %d) lr %s" % 
+                (acc1, acc5, loss_test, acc1_train, acc5_train, loss_train, epoch, best_acc1, best_acc1_epoch, lr))
+            logprint('predicted finish time: %s' % timer())
 
+        ngpus_per_node = torch.cuda.device_count()
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
             if args.method:
@@ -463,8 +463,10 @@ def main_worker(gpu, ngpus_per_node, args):
                     'best_acc1': best_acc1,
                     'optimizer' : optimizer.state_dict(),
                 }, is_best)
-        
-def train(train_loader, model, criterion, optimizer, epoch, args):
+    
+    return best_acc1, best_acc5, best_loss_train, best_loss_test
+
+def train(train_loader, model, criterion, optimizer, epoch, args, print_log=True):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -510,7 +512,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % args.print_freq == 0:
+        if print_log and i % args.print_freq == 0:
             progress.display(i)
 
 

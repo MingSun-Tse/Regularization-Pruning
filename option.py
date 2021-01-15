@@ -105,6 +105,7 @@ parser.add_argument('--inherit_pruned', type=str, default='index', choices=['ind
 parser.add_argument('--model_noise_std', type=float, default=0, help='add Gaussian noise to model weights')
 parser.add_argument('--model_noise_num', type=int, default=10)
 parser.add_argument('--oracle_pruning', action="store_true")
+parser.add_argument('--ft_in_oracle_pruning', action="store_true")
 
 # GReg method related (default setting is for ImageNet):
 parser.add_argument('--batch_size_prune', type=int, default=64)
