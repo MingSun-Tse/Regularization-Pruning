@@ -30,7 +30,8 @@ class Pruner(MetaPruner):
         
         # orable pruning
         pruned_index_pairs = list(itertools.product(*combinations_layer))
-        self.logprint('==> Start oracle pruning: %d pairs of pruned index to ablate' % len(pruned_index_pairs))
+        n_pairs = len(pruned_index_pairs)
+        self.logprint('==> Start oracle pruning: %d pairs of pruned index to ablate' % n_pairs)
         pruned_loss = []
         cnt = 0
         for pair in pruned_index_pairs: # for each pruned index pair, get a pruned loss
@@ -49,13 +50,15 @@ class Pruner(MetaPruner):
             *_, pruned_train_loss = self.test_trainset(model)
             pruned_loss.append(pruned_train_loss)
             self.logprint('')
-            self.logprint('[%d/%d] pruned_index_pair {%s}' % (cnt, len(pruned_index_pairs), pair))
-            self.logprint('[%d/%d] pruned_train_loss %.6f' % (cnt, len(pruned_index_pairs), pruned_train_loss))
+            self.logprint('[%d/%d] pruned_index_pair {%s}' % (cnt, n_pairs, pair))
+            self.logprint('[%d/%d] pruned_train_loss %.6f' % (cnt, n_pairs, pruned_train_loss))
 
             # finetune the pruned model
             if self.args.ft_in_oracle_pruning:
-                acc1, acc5, final_train_loss, final_test_loss = self.finetune(model) # it will return the acc/loss of the best model during finetune
-                self.logprint('[%d/%d] final_train_loss %.6f final_test_loss %.6f final_test_acc %.6f' % (cnt, len(pruned_index_pairs), final_train_loss, final_test_loss, acc1.item()))
+                best, last5 = self.finetune(model) # it will return the acc/loss of the best model during finetune
+                self.logprint('[%d/%d] final_train_loss %.6f final_test_loss %.6f final_test_acc %.6f'        % (cnt, n_pairs,  best[1],  best[2],  best[0]))
+                self.logprint('[%d/%d] last5_train_loss %.6f last5_test_loss %.6f last5_test_acc %.6f (mean)' % (cnt, n_pairs, last5[2], last5[4], last5[0]))
+                self.logprint('[%d/%d] last5_train_loss %.6f last5_test_loss %.6f last5_test_acc %.6f (std)'  % (cnt, n_pairs, last5[3], last5[5], last5[1]))
         
         # get the pruned index pair that leads to least pruned loss
         best_pruned_index_pair = pruned_index_pairs[np.argmin(pruned_loss)]

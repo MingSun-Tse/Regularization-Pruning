@@ -377,6 +377,7 @@ def finetune(model, train_loader, val_loader, train_sampler, criterion, pruner, 
         assert args.lr_ft is not None
         lr_scheduler = PresetLRScheduler(args.lr_ft)
     
+    acc1_list, loss_train_list, loss_test_list = [], [], []
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
@@ -408,12 +409,14 @@ def finetune(model, train_loader, val_loader, train_sampler, criterion, pruner, 
             acc1_train, acc5_train, loss_train = validate(train_loader, model, criterion, args)
         else:
             acc1_train, acc5_train, loss_train = -1, -1, -1
+        acc1_list.append(acc1)
+        loss_train_list.append(loss_train)
+        loss_test_list.append(loss_test)
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
         if is_best:
-            best_acc5 = acc5
             best_acc1_epoch = epoch
             best_loss_train = loss_train
             best_loss_test = loss_test
@@ -449,7 +452,13 @@ def finetune(model, train_loader, val_loader, train_sampler, criterion, pruner, 
                     'optimizer' : optimizer.state_dict(),
                 }, is_best)
     
-    return best_acc1, best_acc5, best_loss_train, best_loss_test
+    last5_acc_mean, last5_acc_std = np.mean(acc1_list[-5:]), np.std(acc1_list[-5:])
+    last5_loss_train_mean, last5_loss_train_std = np.mean(loss_train_list[-5:]), np.std(loss_train_list[-5:])
+    last5_loss_test_mean, last5_loss_test_std = np.mean(loss_test_list[-5:]), np.std(loss_test_list[-5:])
+     
+    best = [best_acc1, best_loss_train, best_loss_test]
+    last5 = [last5_acc_mean, last5_acc_std, last5_loss_train_mean, last5_loss_train_std, last5_loss_test_mean, last5_loss_test_std]
+    return best, last5
 
 def train(train_loader, model, criterion, optimizer, epoch, args, print_log=True):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -566,7 +575,7 @@ def validate(val_loader, model, criterion, args, noisy_model_ensemble=False):
     # change back to original model state if necessary
     if train_state:
         model.train()
-    return top1.avg, top5.avg, losses.avg # @mst: added returning top5 acc and loss
+    return top1.avg.item(), top5.avg.item(), losses.avg # @mst: added returning top5 acc and loss
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
