@@ -452,9 +452,9 @@ def finetune(model, train_loader, val_loader, train_sampler, criterion, pruner, 
                     'optimizer' : optimizer.state_dict(),
                 }, is_best)
     
-    last5_acc_mean, last5_acc_std = np.mean(acc1_list[-5:]), np.std(acc1_list[-5:])
-    last5_loss_train_mean, last5_loss_train_std = np.mean(loss_train_list[-5:]), np.std(loss_train_list[-5:])
-    last5_loss_test_mean, last5_loss_test_std = np.mean(loss_test_list[-5:]), np.std(loss_test_list[-5:])
+    last5_acc_mean, last5_acc_std = np.mean(acc1_list[-args.last_n_epoch:]), np.std(acc1_list[-args.last_n_epoch:])
+    last5_loss_train_mean, last5_loss_train_std = np.mean(loss_train_list[-args.last_n_epoch:]), np.std(loss_train_list[-args.last_n_epoch:])
+    last5_loss_test_mean, last5_loss_test_std = np.mean(loss_test_list[-args.last_n_epoch:]), np.std(loss_test_list[-args.last_n_epoch:])
      
     best = [best_acc1, best_loss_train, best_loss_test]
     last5 = [last5_acc_mean, last5_acc_std, last5_loss_train_mean, last5_loss_train_std, last5_loss_test_mean, last5_loss_test_std]

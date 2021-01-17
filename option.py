@@ -106,6 +106,7 @@ parser.add_argument('--model_noise_std', type=float, default=0, help='add Gaussi
 parser.add_argument('--model_noise_num', type=int, default=10)
 parser.add_argument('--oracle_pruning', action="store_true")
 parser.add_argument('--ft_in_oracle_pruning', action="store_true")
+parser.add_argument('--last_n_epoch', type=int, default=5, help='in correlation analysis, collect the last_n_epoch loss and average them')
 
 # GReg method related (default setting is for ImageNet):
 parser.add_argument('--batch_size_prune', type=int, default=64)
