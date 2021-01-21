@@ -15,7 +15,13 @@ class Pruner(MetaPruner):
         self._prune_and_build_new_model()
                     
         if self.args.reinit:
-            self.model.apply(_weights_init) # equivalent to training from scratch
-            self.logprint("Reinit model")
-
+            if self.args.reinit == 'orth':
+                self.logprint("==> Reinit model: orthogonal initialization")
+                for module in self.model.modules():
+                    if isinstance(module, (nn.Conv2d, nn.Linear)):
+                        nn.init.orthogonal_(module.weight.data)
+            else:
+                self.model.apply(_weights_init) # equivalent to training from scratch
+                self.logprint("==> Reinit model: normal initialization")
+            
         return self.model

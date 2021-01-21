@@ -31,7 +31,7 @@ from importlib import import_module
 from data import Data
 from logger import Logger
 from utils import get_n_params, get_n_flops, get_n_params_, get_n_flops_, PresetLRScheduler, Timer
-from utils import add_noise_to_model
+from utils import add_noise_to_model, compute_jacobian
 from model import model_dict, is_single_branch
 from data import num_classes_dict, img_size_dict
 from pruner import pruner_dict
@@ -351,6 +351,24 @@ def main_worker(gpu, ngpus_per_node, args):
                 state['mask'] = mask 
             save_model(state, mark="just_finished_prune")
     # ---
+
+    # check Jacobian singular value (JSV)
+    if args.check_jsv_loop:
+        jsv = []
+        for i, (images, target) in enumerate(train_loader):
+            if i < args.check_jsv_loop:
+                images, target = images.cuda(), target.cuda()
+                batch_size = images.size(0)
+                images.requires_grad = True # for Jacobian computation
+                output = model(images)
+                jacobian = compute_jacobian(images, output) # shape [batch_size, num_classes, num_channels, input_width, input_height]
+                jacobian = jacobian.view(batch_size, num_classes, -1)
+                u, s, v = torch.svd(jacobian)
+                jsv.append(s.data.cpu().numpy())
+                logprint('[%3d/%3d] calculating Jacobian...' % (i, len(train_loader)))
+        jsv = np.concatenate(jsv)
+        logprint('JSV_mean %.4f JSV_std %.4f JSV_max %.4f JSV_min %.4f' % 
+            (np.mean(jsv), np.std(jsv), np.max(jsv), np.min(jsv)))
 
     if args.evaluate:
         acc1, acc5, loss_test = validate(val_loader, model, criterion, args)

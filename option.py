@@ -93,7 +93,7 @@ parser.add_argument('--lr_ft', type=str, default="{0:0.01,30:0.001,60:0.0001,75:
 parser.add_argument('--data_path', type=str, default="./data")
 parser.add_argument('--wg', type=str, default="filter", choices=['filter', 'channel', 'weight'])
 parser.add_argument('--pick_pruned', type=str, default='min', choices=['min', 'max', 'rand'], help='the criterion to select weights to prune')
-parser.add_argument('--reinit', action="store_true", help='If true, before finetuning, the pruned model will be reinited')
+parser.add_argument('--reinit', type=str, default='', help='before finetuning, the pruned model will be reinited')
 parser.add_argument('--not_use_bn', dest='use_bn', default=True, action="store_false", help='if use BN in the network')
 parser.add_argument('--block_loss_grad', action="store_true", help="block the grad from loss, only apply weight decay")
 parser.add_argument('--save_mag_reg_log', action="store_true", help="save log of L1-norm of filters wrt reg")
@@ -107,6 +107,7 @@ parser.add_argument('--model_noise_num', type=int, default=10)
 parser.add_argument('--oracle_pruning', action="store_true")
 parser.add_argument('--ft_in_oracle_pruning', action="store_true")
 parser.add_argument('--last_n_epoch', type=int, default=5, help='in correlation analysis, collect the last_n_epoch loss and average them')
+parser.add_argument('--check_jsv_loop', type=int, default=0, help="num of batch loops when checking Jacobian singuar values")
 
 # GReg method related (default setting is for ImageNet):
 parser.add_argument('--batch_size_prune', type=int, default=64)
