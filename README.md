@@ -35,9 +35,9 @@ git clone git@github.com:MingSun-Tse/Regularization-Pruning.git -b master
 CUDA_VISIBLE_DEVICES=0 python main.py --arch resnet56 --dataset cifar10 --method L1 --stage_pr [0,0,0,0,0] --batch_size 256 --wd 0.0005 --lr_ft 0:0.1,100:0.01,150:0.001 --epochs 200 --project scratch__resnet56__cifar10
 
 # VGG19, CIFAR100
-CUDA_VISIBLE_DEVICES=0 python main.py --arch vgg19 --dataset cifar100 --method L1 --stage_pr [0-18:0] --batch_size 256 --wd 0.0005 --project scratch__vgg19__cifar100
+CUDA_VISIBLE_DEVICES=0 python main.py --arch vgg19 --dataset cifar100 --method L1 --stage_pr [0-18:0] --batch_size 256 --wd 0.0005 --lr_ft 0:0.1,100:0.01,150:0.001 --epochs 200 --project scratch__vgg19__cifar100
 ```
-where `--method` indicates the pruning method; `--stage_pr` is used to indicate the layer-wise pruning ratio (since we train the *unpruned* model here, `stage_pr` is zero); `--lr_ft` means learning rate schedule during finetuning.
+where `--method` indicates the pruning method; `--stage_pr` is used to indicate the layer-wise pruning ratio (since we train the *unpruned* model here, `stage_pr` is zero. "pr" is short for "pruning_ratio"); `--lr_ft` means learning rate schedule during finetuning.
 
 ## Step 4: Training (pruning)
 We use the following snippets to obtain the results on ImageNet (Table 3 and 4 in our paper).
@@ -99,9 +99,9 @@ CUDA_VISIBLE_DEVICES=0,1 python main.py --dataset imagenet --arch resnet50 --pre
 ```
 where `--wg weight` is to indicate the weight group is weight element, i.e., unstructured pruning.
 
-**How to change the pruning ratio of each layer:** (TODO)
-
-
+**About "--stage_pr":**
+- For residual networks (i.e., multi-branch), `--stage_pr` is a list. For example, `--stage_pr [0,0.68,0.68,0.68,0.5,0]` means ''stage 0, pr=0; stage 1 to 3, pr=0.68; stage 4, pr=0.5; stage 5, pr=0". FC layer is also counted as the last stage, since we don't prune FC, its pr=0.
+- For vgg-style networks (i.e., single-branch), `--stage_pr` is a dict. For example, `--stage_pr [0-4:0.5, 7-10:0.2]` means "layer 0 to 4, pr=0.5; layer 7-10, pr=0.2; for those not mentioned, pr=0 in default".
 
 ## Results
 Our pruned ImageNet models can be downloaded at this [google drive](https://drive.google.com/file/d/1NHq5YSCejYdQyxJYjQWsyfsHgpN2KCtR/view?usp=sharing). Comparison with other methods is shown below. Both structured pruning (filter pruning) and unstructured pruning are evaluated.
@@ -120,11 +120,11 @@ In this code we refer to the following implementations: [pytorch imagenet exampl
 ## Reference
 Please cite this in your publication if our work helps your research. Should you have any questions, welcome to reach out to Huan Wang (wang.huan@northeastern.edu).
 
-    @article{wang2020neural,
+    @inproceedings{wang2021neural,
       Author = {Wang, Huan and Qin, Can and Zhang, Yulun and Fu, Yun},
       Title = {Neural Pruning via Growing Regularization},
-      Journal = {arXiv preprint arXiv:2012.09243},
-      Year = {2020}
+      Booktitle = {ICLR},
+      Year = {2021}
     }
 
 
