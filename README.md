@@ -1,7 +1,7 @@
 # Regularization-Pruning
 
-This repository is for the new deep neural network pruning methods introduced in the following paper:
-> **Neural Pruning via Growing Regularization [[arxiv](https://arxiv.org/abs/2012.09243)]** \
+This repository is for the new deep neural network pruning methods introduced in the following ICLR 2021 paper:
+> **Neural Pruning via Growing Regularization [[Camera Ready](https://openreview.net/pdf?id=o966_Is_nPA)]** \
 > [Huan Wang](http://huanwang.tech/), [Can Qin](http://canqin.tech/), [Yulun Zhang](http://yulunzhang.com/), and [Yun Fu](http://www1.ece.neu.edu/~yunfu/) \
 > Northeastern University, Boston, MA, USA
 
@@ -15,7 +15,7 @@ TLDR: This paper introduces two new neural network pruning methods (named `GReg-
 - OS: Linux (Ubuntu 1404 and 1604 checked. It should be all right for most linux platforms. Windows and MacOS not checked.)
 - python=3.6.9 (conda to manage environment is strongly suggested)
 - All the dependant libraries are summarized in `requirements.txt`. Simply install them by `pip install -r requirements.txt`.
-- CUDA and cuDNN
+- CUDA (We use CUDA 10.2, Driver Version: 440.33.01)
 
 After the installlations, download the code:
 ```
@@ -99,10 +99,6 @@ CUDA_VISIBLE_DEVICES=0,1 python main.py --dataset imagenet --arch resnet50 --pre
 ```
 where `--wg weight` is to indicate the weight group is weight element, i.e., unstructured pruning.
 
-**About "--stage_pr":**
-- For residual networks (i.e., multi-branch), `--stage_pr` is a list. For example, `--stage_pr [0,0.68,0.68,0.68,0.5,0]` means ''stage 0, pr=0; stage 1 to 3, pr=0.68; stage 4, pr=0.5; stage 5, pr=0". FC layer is also counted as the last stage, since we don't prune FC, its pr=0.
-- For vgg-style networks (i.e., single-branch), `--stage_pr` is a dict. For example, `--stage_pr [0-4:0.5, 7-10:0.2]` means "layer 0 to 4, pr=0.5; layer 7-10, pr=0.2; for those not mentioned, pr=0 in default".
-
 ## Results
 Our pruned ImageNet models can be downloaded at this [google drive](https://drive.google.com/file/d/1NHq5YSCejYdQyxJYjQWsyfsHgpN2KCtR/view?usp=sharing). Comparison with other methods is shown below. Both structured pruning (filter pruning) and unstructured pruning are evaluated.
 > **Tips to load our pruned model**. The pruned model (both the pruned architecture and weights) is saved in the `checkpoint_best.pth`. When loading this file using `torch.load()`, the current path MUST be *the root of this code repository* (because it needs the `model` module in the current directory); otherwise, it will report an error.
@@ -112,6 +108,26 @@ Our pruned ImageNet models can be downloaded at this [google drive](https://driv
 
 (2) Compression (unstructured pruning) comparison on ImageNet
 <center><img src="readme_figures/compression_comparison_imagenet.png" width="700" hspace="10"></center>
+
+
+## Some features
+This code also implements some baseline pruning methods that may help you:
+- L1-norm pruning. Simple use argument `--method L1`. Example:
+```
+CUDA_VISIBLE_DEVICES=0,1 python main.py --dataset imagenet --arch resnet50 --pretrained --method L1 --screen --stage_pr [0,0.68,0.68,0.68,0.5,0] --project L1__resnet50__imagenet__3.06x_pr0.680.5
+```
+- Random pruning and max pruning (i.e., sort the weights by magnitude and prune those with the *largest* magnitudes). There is an argument `--pick_pruned` to decide the sorting criterion. Default is `min`. You may switch to `rand` or `max` for random pruning or max pruning. Example:
+```
+CUDA_VISIBLE_DEVICES=0,1 python main.py --dataset imagenet --arch resnet50 --pretrained --method L1 --pick_pruned rand --screen --stage_pr [0,0.68,0.68,0.68,0.5,0] --project L1__resnet50__imagenet__3.06x_pr0.680.5__randpruning
+
+CUDA_VISIBLE_DEVICES=0,1 python main.py --dataset imagenet --arch resnet50 --pretrained --method L1 --pick_pruned max --screen --stage_pr [0,0.68,0.68,0.68,0.5,0] --project L1__resnet50__imagenet__3.06x_pr0.680.5__maxpruning
+```
+- For structured pruning, the pruned network is a compact one, namely, literally *no* zeros stored in the model (so you may find the size of the pruned model is smaller than the original one). For unstructured pruning, we maintain a mask stored in the model (so the model size is not reduced).
+- About "--stage_pr" (the argument to adjust layer-wise pruning ratio):
+    - For residual networks (i.e., multi-branch), `--stage_pr` is a list. For example, `--stage_pr [0,0.68,0.68,0.68,0.5,0]` means ''stage 0, pr=0; stage 1 to 3, pr=0.68; stage 4, pr=0.5; stage 5, pr=0". FC layer is also counted as the last stage, since we don't prune FC, its pr=0.
+    - For vgg-style networks (i.e., single-branch), `--stage_pr` is a dict. For example, `--stage_pr [0-4:0.5, 7-10:0.2]` means "layer 0 to 4, pr=0.5; layer 7-10, pr=0.2; for those not mentioned, pr=0 in default".
+
+Feel free to let us know (raise a GitHub issue or email to `wang.huan@northeastern.edu` or send a pull request) if you want any new feature or to evaluate the methods on networks other than those in the paper.
 
 
 ## Acknowledgments

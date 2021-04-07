@@ -15,9 +15,13 @@ import glob
 from PIL import Image
 import json, yaml
 import pandas as pd
+from scipy.spatial import cKDTree
+from scipy.special import gamma, digamma
+import lmdb
+import pickle
 
 def _weights_init(m):
-    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+    if isinstance(m, (nn.Conv2d, nn.Linear)):
         init.kaiming_normal(m.weight)
         if m.bias is not None:
             m.bias.data.fill_(0)
@@ -25,6 +29,90 @@ def _weights_init(m):
         if m.weight is not None:
             m.weight.data.fill_(1.0)
             m.bias.data.zero_()
+
+def _weights_init_orthogonal(m, act='relu'):
+    if isinstance(m, (nn.Conv2d, nn.Linear)):
+        init.orthogonal_(m.weight, gain=init.calculate_gain(act))
+        if m.bias is not None:
+            m.bias.data.fill_(0)
+    elif isinstance(m, nn.BatchNorm2d):
+        if m.weight is not None:
+            m.weight.data.fill_(1.0)
+            m.bias.data.zero_()
+
+# Modify the orthogonal initialization
+# refer to: https://pytorch.org/docs/stable/_modules/torch/nn/init.html#orthogonal_
+def orthogonalize_weights(tensor, act):
+    r"""Fills the input `Tensor` with a (semi) orthogonal matrix, as
+    described in `Exact solutions to the nonlinear dynamics of learning in deep
+    linear neural networks` - Saxe, A. et al. (2013). The input tensor must have
+    at least 2 dimensions, and for tensors with more than 2 dimensions the
+    trailing dimensions are flattened.
+
+    Args:
+        tensor: an n-dimensional `torch.Tensor`, where :math:`n \geq 2`
+        gain: optional scaling factor
+
+    Examples:
+        >>> w = torch.empty(3, 5)
+        >>> nn.init.orthogonal_(w)
+    """
+    tensor = tensor.clone().detach() # @mst: avoid modifying the original tensor
+    gain = init.calculate_gain(act)
+
+    if tensor.ndimension() < 2:
+        raise ValueError("Only tensors with 2 or more dimensions are supported")
+
+    rows = tensor.size(0)
+    cols = tensor.numel() // rows
+    # flattened = tensor.new(rows, cols).normal_(0, 1)
+    flattened = tensor.view(rows, cols) # @mst: do NOT reinit the tensor
+
+    if rows < cols:
+        flattened.t_()
+
+    # Compute the qr factorization
+    q, r = torch.qr(flattened) # q: (rows, cols), r: (cols, cols) if rows > cols.
+
+    # Make Q uniform according to https://arxiv.org/pdf/math-ph/0609050.pdf
+    d = torch.diag(r, 0) # d: (cols)
+    ph = d.sign()
+    q *= ph # (rows, cols) * (cols) => (rows, cols)
+
+    if rows < cols:
+        q.t_()
+
+    with torch.no_grad():
+        tensor.view_as(q).copy_(q)
+        tensor.mul_(gain)
+    return tensor
+
+# refer to: https://github.com/JiJingYu/delta_orthogonal_init_pytorch/blob/master/demo.py
+def genOrthgonal(dim):
+    a = torch.zeros((dim, dim)).normal_(0, 1)
+    q, r = torch.qr(a)
+    d = torch.diag(r, 0).sign()
+    diag_size = d.size(0)
+    d_exp = d.view(1, diag_size).expand(diag_size, diag_size)
+    q.mul_(d_exp)
+    return q
+
+def delta_orthogonalize_weights(weights, act):
+    weights = copy.deepcopy(weights)
+    gain = init.calculate_gain(act)
+
+    rows = weights.size(0)
+    cols = weights.size(1)
+    if rows > cols:
+        print("In_filters should not be greater than out_filters.")
+    weights.data.fill_(0)
+    dim = max(rows, cols)
+    q = genOrthgonal(dim)
+    mid1 = weights.size(2) // 2
+    mid2 = weights.size(3) // 2
+    weights[:, :, mid1, mid2] = q[:weights.size(0), :weights.size(1)]
+    weights.mul_(gain)
+    return weights
 
 # refer to: https://github.com/Eric-mingjie/rethinking-network-pruning/blob/master/imagenet/l1-norm-pruning/compute_flops.py
 def get_n_params(model):
@@ -149,10 +237,16 @@ def get_n_flops(model=None, input_res=224, multiply_adds=True, n_channel=3):
     return total_flops
 
 # The above version is redundant. Get a neat version as follow.
-def get_n_flops_(model=None, img_size=224, n_channel=3, count_adds=True):
+def get_n_flops_(model=None, img_size=(224,224), n_channel=3, count_adds=True, idx_scale=None):
     '''Only count the FLOPs of conv and linear layers (no BN layers etc.). 
     Only count the weight computation (bias not included since it is negligible)
     '''
+    if hasattr(img_size, '__len__'):
+        height, width = img_size
+    else:
+        assert isinstance(img_size, int)
+        height, width = img_size, img_size
+
     model = copy.deepcopy(model)
     list_conv = []
     def conv_hook(self, input, output):
@@ -176,8 +270,19 @@ def get_n_flops_(model=None, img_size=224, n_channel=3, count_adds=True):
             register_hooks(c)
 
     register_hooks(model)
-    input = Variable(torch.rand(1, n_channel, img_size, img_size))
-    model(input)
+    use_cuda = next(model.parameters()).is_cuda
+    input = torch.rand(1, n_channel, height, width)
+    if use_cuda:
+        input = input.cuda()
+    
+    # forward
+    try:
+        model(input)
+    except:
+        model(input, {'idx_scale': idx_scale})
+        # @mst (TODO): for SR network, there may be an extra argument for scale. Here set it to 2 to make it run normally. 
+        # -- An ugly solution. Probably will be improved later.
+    
     total_flops = (sum(list_conv) + sum(list_linear))
     if count_adds:
         total_flops *= 2
@@ -244,10 +349,9 @@ def strlist_to_list(sstr, ttype):
     if not sstr:
         return sstr
     out = []
-    if '[' in sstr:
-        sstr = sstr.split("[")[1].split("]")[0]
-    else:
-        sstr = sstr.strip()
+    sstr = sstr.strip()
+    if sstr.startswith('[') and sstr.endswith(']'):
+        sstr = sstr[1:-1]
     for x in sstr.split(','):
         x = x.strip()
         if x:
@@ -262,10 +366,9 @@ def strdict_to_dict(sstr, ttype):
     if not sstr:
         return sstr
     out = {}
-    if '{' in sstr:
-        sstr = sstr.split("{")[1].split("}")[0]
-    else:
-        sstr = sstr.strip()
+    sstr = sstr.strip()
+    if sstr.startswith('{') and sstr.endswith('}'):
+        sstr = sstr[1:-1]
     for x in sstr.split(','):
         x = x.strip()
         if x:
@@ -312,14 +415,16 @@ def np_to_torch(x):
     x= torch.from_numpy(x).float()
     return x
 
-def kd_loss(student_scores, teacher_scores, temp=1):
+def kd_loss(student_scores, teacher_scores, temp=1, weights=None):
     '''Knowledge distillation loss: soft target
     '''
     p = F.log_softmax(student_scores / temp, dim=1)
     q =     F.softmax(teacher_scores / temp, dim=1)
     # l_kl = F.kl_div(p, q, size_average=False) / student_scores.shape[0] # previous working loss
-    l_kl = F.kl_div(p, q, reduction='batchmean') # 2020-06-21 @mingsun-tse: Since 'size_average' is deprecated, \
-    # use 'reduction' instead. In probation.
+    if isinstance(weights, type(None)):
+        l_kl = F.kl_div(p, q, reduction='batchmean') # 2020-06-21 @mst: Since 'size_average' is deprecated, use 'reduction' instead.
+    else:
+        l_kl = (F.kl_div(p, q, reduction='none').sum(dim=1) * weights).sum()
     return l_kl
 
 def test(net, test_loader):
@@ -636,7 +741,8 @@ class Timer():
         left_t = sec_per_epoch * (self.total_epoch - len(interval))
         finish_t = left_t + time.time()
         finish_t = time.strftime('%Y/%m/%d-%H:%M', time.localtime(finish_t))
-        return finish_t + ' (speed: %.2fs per timing)' % sec_per_epoch
+        total_t = '%.2fh' % ((np.sum(interval) + left_t) / 3600.)
+        return finish_t + ' (speed: %.2fs per timing, total_time: %s)' % (sec_per_epoch, total_t)
     
     def __call__(self):
         return(self.predict_finish_time())
@@ -651,6 +757,22 @@ class Dataset_npy_batch(Dataset):
         label = self.data[index][1]
         label = torch.LongTensor([label])[0]
         return img.squeeze(0), label
+    def __len__(self):
+        return len(self.data)
+
+class Dataset_lmdb_batch(Dataset):
+    '''Dataset to load a lmdb data file.
+    '''
+    def __init__(self, lmdb_path, transform):
+        env = lmdb.open(lmdb_path, readonly=True)
+        with env.begin() as txn:
+            self.data = [value for key, value in txn.cursor()]
+        self.transform = transform
+    def __getitem__(self, index):
+        img, label = pickle.loads(self.data[index]) # PIL image
+        if self.transform:
+            img = self.transform(img)
+        return img, label
     def __len__(self):
         return len(self.data)
 
@@ -844,3 +966,100 @@ def compute_jacobian(inputs, output):
 		jacobian[i] = inputs.grad.data
 
 	return torch.transpose(jacobian, dim0=0, dim1=1)
+
+def get_jacobian_singular_values(model, data_loader, num_classes, n_loop=20, print_func=print, rand_data=False):
+    jsv, condition_number = [], []
+    if rand_data:
+        picked_batch = np.random.permutation(len(data_loader))[:n_loop]
+    else:
+        picked_batch = list(range(n_loop))
+    for i, (images, target) in enumerate(data_loader):
+        if i in picked_batch:
+            images, target = images.cuda(), target.cuda()
+            batch_size = images.size(0)
+            images.requires_grad = True # for Jacobian computation
+            output = model(images)
+            jacobian = compute_jacobian(images, output) # shape [batch_size, num_classes, num_channels, input_width, input_height]
+            jacobian = jacobian.view(batch_size, num_classes, -1) # shape [batch_size, num_classes, num_channels*input_width*input_height]
+            u, s, v = torch.svd(jacobian) # u: [batch_size, num_channels*input_width*input_height, num_classes], s: [batch_size, num_classes], v: [batch_size, num_channels*input_width*input_height, num_classes]
+            s = s.data.cpu().numpy()
+            jsv.append(s)
+            condition_number.append(s.max() / s.min())
+            print_func('[%3d/%3d] calculating Jacobian...' % (i, len(data_loader)))
+    jsv = np.concatenate(jsv)
+    condition_number = np.array(condition_number)
+    return jsv, condition_number
+
+def approximate_entropy(X, num_bins=10, esp=1e-30):
+    '''X shape: [num_sample, n_var], numpy array.
+    '''
+    entropy = []
+    for di in range(X.shape[1]):
+        samples = X[:, di]
+        bins = np.linspace(samples.min(), samples.max(), num=num_bins+1)
+        prob = np.histogram(samples, bins=bins, density=False)[0] / len(samples)
+        entropy.append((-np.log2(prob + esp) * prob).sum()) # esp for numerical stability when prob = 0
+    return np.mean(entropy)
+
+# matplotlib utility functions
+def set_ax(ax):
+    '''This will modify ax in place.
+    '''
+    # set background
+    ax.grid(color='white')
+    ax.set_facecolor('whitesmoke')
+
+    # remove axis line
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+
+    # remove tick but keep the values
+    ax.xaxis.set_ticks_position('none')
+    ax.yaxis.set_ticks_position('none')
+
+def parse_value(line, key, type_func=float, exact_key=True):
+    '''Parse a line with the key 
+    '''
+    try:
+        if exact_key: # back compatibility
+            value = line.split(key)[1].strip().split()[0]
+            if value.endswith(')'): # hand-fix case: "Epoch 23)"
+                value = value[:-1] 
+            value = type_func(value)
+        else:
+            line_seg = line.split()
+            for i in range(len(line_seg)):
+                if key in line_seg[i]: # example: 'Acc1: 0.7'
+                    break
+            if i == len(line_seg) - 1:
+                return None # did not find the <key> in this line
+            value = type_func(line_seg[i + 1])
+        return value
+    except:
+        print('Got error for line: "%s". Please check.' % line)
+
+def to_tensor(x):
+    x = np.array(x)
+    x = torch.from_numpy(x).float()
+    return x
+
+def denormalize_image(x, mean, std):
+    '''x shape: [N, C, H, W], batch image
+    '''
+    x = x.cuda()
+    mean = to_tensor(mean).cuda()
+    std = to_tensor(std).cuda()
+    mean = mean.unsqueeze(0).unsqueeze(2).unsqueeze(3) # shape: [1, C, 1, 1]
+    std = std.unsqueeze(0).unsqueeze(2).unsqueeze(3)
+    x = std * x + mean
+    return x
+
+def make_one_hot(labels, C): # labels: [N]
+    '''turn a batch of labels to the one-hot form
+    '''
+    labels = labels.unsqueeze(1) # [N, 1]
+    one_hot = torch.zeros(labels.size(0), C).cuda()
+    target = one_hot.scatter_(1, labels, 1)
+    return target

@@ -47,6 +47,14 @@ class LogPrinter(object):
             if self.print_to_screen:
                 print(x)
     
+    def print(self, *in_str):
+        '''print without any prefix
+        '''
+        for x in in_str:
+            print(x, file=self.file, flush=True)
+            if self.print_to_screen:
+                print(x)
+    
     def print_args(self, args):
         '''
             Example: ('batch_size', 16) ('CodeID', 12defsd2) ('decoder', models/small16x_ae_base/d5_base.pth)
@@ -65,8 +73,8 @@ class LogPrinter(object):
         logtmp = ''
         for k_ in sorted(key_map.keys()):
             real_key = key_map[k_]
-            logtmp += "('%s', %s) "% (real_key, args.__dict__[real_key])
-        self.__call__(logtmp[:-1]) # the last one is blank
+            logtmp += "('%s': %s) " % (real_key, args.__dict__[real_key])
+        self.print(logtmp[:-1] + '\n') # the last one is blank
 
 class LogTracker(object):
     def __init__(self, momentum=0.9):
@@ -199,6 +207,9 @@ class Logger(object):
 
         # set up work folder
         self.ExpID = self.get_ExpID()
+        self.Exps_Dir = 'Experiments'
+        if hasattr(self.args, 'Exps_Dir'):
+            self.Exps_Dir = self.args.Exps_Dir
         self.set_up_dir()
 
         self.log_printer = LogPrinter(
@@ -207,11 +218,13 @@ class Logger(object):
 
         # initial print: save args
         self.print_script()
+        self.print_nvidia_smi()
         self.print_note()
         if (not args.debug) and self.SERVER != '':
             # If self.SERVER != '', it shows this is Huan's computer, then call this func, which is just a small feature to my need.
             # When others use this code, they probably need NOT call this func.
-            self.__send_to_exp_hub() 
+            # self.__send_to_exp_hub() # this function is not very useful. deprecated.
+            pass
         args.CodeID = self.get_CodeID()
         self.log_printer.print_args(args)
         self.save_args(args)
@@ -246,7 +259,7 @@ class Logger(object):
         return ExpID
 
     def set_up_dir(self):
-        project_path = pjoin("Experiments/%s_%s" % (self.args.project_name, self.ExpID))
+        project_path = pjoin("%s/%s_%s" % (self.Exps_Dir, self.args.project_name, self.ExpID))
         if hasattr(self.args, 'resume_ExpID') and self.args.resume_ExpID:
             project_path = get_project_path(self.args.resume_ExpID)
         if self.args.debug: # debug has the highest priority. If debug, all the things will be saved in Debug_dir
@@ -263,23 +276,32 @@ class Logger(object):
         self.script_hist = open('.script_history', 'a+') # save local script history, for convenience of check
 
     def print_script(self):
-        gpu_id = os.environ['CUDA_VISIBLE_DEVICES']
-        script = " ".join(["CUDA_VISIBLE_DEVICES=%s python" % gpu_id, *sys.argv])
+        script = 'cd %s\n' % os.path.abspath(os.getcwd())
+        if 'CUDA_VISIBLE_DEVICES' in os.environ:
+            gpu_id = os.environ['CUDA_VISIBLE_DEVICES']
+            script += ' '.join(['CUDA_VISIBLE_DEVICES=%s python' % gpu_id, *sys.argv])
+        else:
+            script += ' '.join(['python', *sys.argv])
+        script += '\n'
         print(script, file=self.logtxt, flush=True)
         print(script, file=sys.stdout, flush=True)
         print(script, file=self.script_hist, flush=True)
     
     def print_exc(self):
         traceback.print_exc(file=self.logtxt)
+    
+    def print_nvidia_smi(self):
+        out = pjoin(self.log_path, 'gpu_info.txt')
+        script = 'nvidia-smi >> %s' % out
+        os.system(script)
 
     def print_note(self):
         project = self.get_project_name() # the current project folder name
         exp_id = self.ExpID.split('-')[-1] # SERVER138-20200623-095526
-        if not hasattr(self.args, 'note'):
-            self.args.note = ''
-        self.ExpNote = 'ExpNote [%s-%s-%s]: "%s" -- %s' % (self.SERVER, project, exp_id, self.args.note, self.args.project_name)
-        print(self.ExpNote, file=self.logtxt, flush=True)
-        print(self.ExpNote, file=sys.stdout, flush=True)
+        if hasattr(self.args, 'note') and self.args.note:
+            self.ExpNote = 'ExpNote [%s-%s-%s]: "%s" -- %s' % (self.SERVER, project, exp_id, self.args.note, self.args.project_name)
+            print(self.ExpNote, file=self.logtxt, flush=True)
+            print(self.ExpNote, file=sys.stdout, flush=True)
 
     def plot(self, name, out_path):
         self.log_tracker.plot(name, out_path)
