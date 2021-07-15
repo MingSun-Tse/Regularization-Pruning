@@ -265,6 +265,7 @@ class Logger(object):
         if self.args.debug: # debug has the highest priority. If debug, all the things will be saved in Debug_dir
             project_path = "Debug_Dir"
 
+        self.exp_path     = project_path
         self.weights_path = pjoin(project_path, "weights")
         self.gen_img_path = pjoin(project_path, "gen_img")
         self.cache_path   = pjoin(project_path, ".caches")
@@ -321,8 +322,8 @@ class Logger(object):
         '''
             Save the modle architecture, loss, configs, in case of future check.
         '''
-        extensions = ['.py', '.json', '.yaml', '.sh'] # files of these types will be cached
-        self.log_printer("==> caching various config files to '%s'" % self.cache_path)
+        extensions = ['.py', '.json', '.yaml', '.sh', '.txt', '.md'] # files of these types will be cached
+        self.log_printer("==> Caching various config files to '%s'" % self.cache_path)
         for root, dirs, files in os.walk("."):
             if "Experiments" in root or "Debug_Dir" in root:
                 continue

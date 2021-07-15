@@ -5,7 +5,6 @@ from torch.utils.data import Dataset
 import torch.nn.functional as F
 import torchvision
 from torch.autograd import Variable
-from torch.autograd.gradcheck import zero_gradients
 from pprint import pprint
 import time, math, os, sys, copy, numpy as np, shutil as sh
 import matplotlib.pyplot as plt
@@ -13,11 +12,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from collections import OrderedDict
 import glob
 from PIL import Image
-import json, yaml
-import pandas as pd
-from scipy.spatial import cKDTree
-from scipy.special import gamma, digamma
-import lmdb
 import pickle
 
 def _weights_init(m):
@@ -764,6 +758,7 @@ class Dataset_lmdb_batch(Dataset):
     '''Dataset to load a lmdb data file.
     '''
     def __init__(self, lmdb_path, transform):
+        import lmdb
         env = lmdb.open(lmdb_path, readonly=True)
         with env.begin() as txn:
             self.data = [value for key, value in txn.cursor()]
@@ -777,6 +772,7 @@ class Dataset_lmdb_batch(Dataset):
         return len(self.data)
 
 def merge_args(args, params_json):
+    import json, yaml
     '''<args> is from argparser. <params_json> is a json/yaml file.
     merge them, if there is collision, the param in <params_json> has a higher priority.
     '''
@@ -793,6 +789,7 @@ def merge_args(args, params_json):
 
 class AccuracyManager():
     def __init__(self):
+        import pandas as pd
         self.accuracy = pd.DataFrame()
     
     def update(self, time, acc1, acc5=None):
@@ -948,8 +945,8 @@ def compute_jacobian(inputs, output):
 	:param output: Batch X Classes
 	:return: jacobian: Batch X Classes X Size
 	"""
+	from torch.autograd.gradcheck import zero_gradients
 	assert inputs.requires_grad
-
 	num_classes = output.size()[1]
 
 	jacobian = torch.zeros(num_classes, *inputs.size())
@@ -984,10 +981,10 @@ def get_jacobian_singular_values(model, data_loader, num_classes, n_loop=20, pri
             u, s, v = torch.svd(jacobian) # u: [batch_size, num_channels*input_width*input_height, num_classes], s: [batch_size, num_classes], v: [batch_size, num_channels*input_width*input_height, num_classes]
             s = s.data.cpu().numpy()
             jsv.append(s)
-            condition_number.append(s.max() / s.min())
+            condition_number.append(s.max(axis=1) / s.min(axis=1))
             print_func('[%3d/%3d] calculating Jacobian...' % (i, len(data_loader)))
     jsv = np.concatenate(jsv)
-    condition_number = np.array(condition_number)
+    condition_number = np.concatenate(condition_number)
     return jsv, condition_number
 
 def approximate_entropy(X, num_bins=10, esp=1e-30):
@@ -1063,3 +1060,83 @@ def make_one_hot(labels, C): # labels: [N]
     one_hot = torch.zeros(labels.size(0), C).cuda()
     target = one_hot.scatter_(1, labels, 1)
     return target
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self, name, fmt=':f'):
+        self.name = name
+        self.fmt = fmt
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+    def __str__(self):
+        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
+        return fmtstr.format(**self.__dict__)
+
+class ProgressMeter(object):
+    def __init__(self, num_batches, meters, prefix=""):
+        self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
+        self.meters = meters
+        self.prefix = prefix
+
+    def display(self, batch):
+        entries = [self.prefix + self.batch_fmtstr.format(batch)]
+        entries += [str(meter) for meter in self.meters]
+        print('\t'.join(entries))
+
+    def _get_batch_fmtstr(self, num_batches):
+        num_digits = len(str(num_batches // 1))
+        fmt = '{:' + str(num_digits) + 'd}'
+        return '[' + fmt + '/' + fmt.format(num_batches) + ']'
+
+
+def adjust_learning_rate(optimizer, epoch, args):
+    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
+    lr = args.lr * (0.1 ** (epoch // 30))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    return lr
+
+def accuracy(output, target, topk=(1,)):
+    """Computes the accuracy over the k top predictions for the specified values of k"""
+    with torch.no_grad():
+        maxk = max(topk)
+        batch_size = target.size(0)
+
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+        res = []
+        for k in topk:
+            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size))
+        return res
+
+class LossLine():
+    '''Format loss items for easy print.
+    '''
+    def __init__(self):
+        self.log_dict = OrderedDict()
+        self.formats = OrderedDict()
+    def update(self, key, value, format):
+        self.log_dict[key] = value
+        self.formats[key] = format
+    def format(self, sep=' '):
+        out = []
+        for k, v in self.log_dict.items():
+            item = f"{k} {v:{self.formats[k]}}"
+            out.append(item)
+        return sep.join(out)
+        
